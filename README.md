@@ -1,6 +1,20 @@
 # CCT Swarm Dashboard
 
-**Interactive demo:** [ckl.sh/demos/swarm-board](https://ckl.sh/demos/swarm-board) · **Dataset:** [CKL/wow-cod-thps4-gamejam](https://huggingface.co/datasets/CKL/wow-cod-thps4-gamejam) · **Adapters:** [LoRA v2](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v2), [LoRA v1](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1)
+<p align="left">
+  <a href="https://youtu.be/mSBVHdznFGI"><img alt="Watch the video" src="https://img.shields.io/badge/video-watch%20on%20YouTube-ff0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
+  <a href="https://ckl.sh/demos/swarm-board"><img alt="Live demo" src="https://img.shields.io/badge/demo-live-2ea44f?style=for-the-badge&logo=googlechrome&logoColor=white"></a>
+  <a href="https://huggingface.co/datasets/CKL/wow-cod-thps4-gamejam"><img alt="Dataset on Hugging Face" src="https://img.shields.io/badge/%F0%9F%A4%97%20dataset-wow--cod--thps4--gamejam-ffcc4d?style=for-the-badge"></a>
+  <a href="https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v2"><img alt="LoRA v2 on Hugging Face" src="https://img.shields.io/badge/%F0%9F%A4%97%20model-Qwen3--30B%20LoRA%20v2-ffcc4d?style=for-the-badge"></a>
+  <br>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a>
+  <img alt="Data: CC BY 4.0" src="https://img.shields.io/badge/data-CC%20BY%204.0-lightgrey?style=flat-square">
+  <img alt="Trained on Nebius Token Factory" src="https://img.shields.io/badge/trained%20on-Nebius%20Token%20Factory-0b3d91?style=flat-square">
+  <img alt="NVIDIA Nemotron" src="https://img.shields.io/badge/NVIDIA-Nemotron%203%20Ultra-76b900?style=flat-square&logo=nvidia&logoColor=white">
+  <img alt="Qwen3-30B-A3B" src="https://img.shields.io/badge/student-Qwen3--30B--A3B-6f42c1?style=flat-square">
+  <img alt="Nebius x NVIDIA Global AI Hackathon" src="https://img.shields.io/badge/hackathon-Nebius%20%C3%97%20NVIDIA-black?style=flat-square">
+</p>
+
+[![Watch the Swarm Board video](https://img.youtube.com/vi/mSBVHdznFGI/maxresdefault.jpg)](https://youtu.be/mSBVHdznFGI)
 
 ![Swarm Board overview](docs/media/system-overview.gif)
 
