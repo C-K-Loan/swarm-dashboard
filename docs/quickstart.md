@@ -19,7 +19,7 @@ The dashboard and the pipelines read a `data/` directory that is not part of thi
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-hf download <hf-user>/cct-swarm-gamejam --repo-type dataset --local-dir ../cct-swarm-gamejam
+hf download CKL/cct-swarm-gamejam --repo-type dataset --local-dir ../cct-swarm-gamejam
 scripts/setup_public_data.sh ../cct-swarm-gamejam
 ```
 

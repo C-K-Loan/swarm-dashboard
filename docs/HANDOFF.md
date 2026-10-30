@@ -10,7 +10,7 @@ Status: **prepared locally, nothing published.** None of the commands below has 
 - [ ] Owner has read the internal design notes under `docs/v02/` and `docs/` (see [index.md](index.md)) and is fine publishing them.
 - [ ] Final sanitization scans re-run on the exact tree being published (secrets, IPs, hosts, non-project paths, other-project names incl. OCR of images): all zero.
 - [ ] Tests pass on that tree: `python3 -m pytest -q scripts ui/tests` and `cd ui && npm run test:unit`.
-- [ ] Hugging Face repo names decided (below: `<hf-user>/cct-swarm-gamejam`, `<hf-user>/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1`, `-v2`), and the cross-links in README and cards filled in.
+- [x] Hugging Face repos: `CKL/cct-swarm-gamejam` (dataset), `CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1`, `-v2` (models), private first.
 - [ ] The repository is published as a **fresh single-commit history**, never the development history (the development history contains private files).
 
 ## 1. Code: fresh repository
@@ -33,8 +33,8 @@ gh repo edit <owner>/swarm-dashboard --visibility public --accept-visibility-cha
 
 ```bash
 hf auth login                              # interactive, token with write access
-hf repo create <hf-user>/cct-swarm-gamejam --repo-type dataset --private
-hf upload <hf-user>/cct-swarm-gamejam hf/datasets/cct-swarm-gamejam . --repo-type dataset
+hf repo create CKL/cct-swarm-gamejam --repo-type dataset --private
+hf upload CKL/cct-swarm-gamejam hf/datasets/cct-swarm-gamejam . --repo-type dataset
 ```
 
 366 MB, 125 files. `README.md` at the folder root is the dataset card.
@@ -44,8 +44,8 @@ hf upload <hf-user>/cct-swarm-gamejam hf/datasets/cct-swarm-gamejam . --repo-typ
 ```bash
 for v in v1 v2; do
   r=cct-v03-lean-qwen3-30b-a3b-lora-r16-$v
-  hf repo create <hf-user>/$r --repo-type model --private
-  hf upload <hf-user>/$r hf/models/$r . --repo-type model
+  hf repo create CKL/$r --repo-type model --private
+  hf upload CKL/$r hf/models/$r . --repo-type model
 done
 ```
 

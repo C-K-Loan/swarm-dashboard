@@ -11,7 +11,7 @@ All agreement numbers in this project are **agreement with a reference model**, 
 | Stage 1 · Prose v1 | **55.6% per-field agreement** (Qwen3-30B-A3B vs Claude Opus labels, mean of 5 fields; majority baseline **59.1%**) | share of messages where a field equals the Opus label, averaged over the 5 fields |
 | Stage 2 · Prose v2 | **94% F1 · ~90% cheaper** (vs Haiku merges, Qwen3-235B, lenient F1; strict 0.89) | merge F1 vs the Claude Haiku 4.5 merge; cost per 1k merged nodes |
 | State graph · v0.3 lean | **59% agreement · ~95% cheaper** (touched-task F1 vs Haiku, LoRA v2, relationships 34% of Haiku's) | touched-task F1 on 131 held-out turns; cost per 1k turns |
-| Overall · Stage 2 + state graph | **~92% cheaper** | 1 - (our USD / reference USD), summed over the two stages |
+| Overall · Stage 2 + state graph | **~92% cheaper** | mean of the two stage savings (unweighted): (89.8% + 94.8%) / 2 |
 
 `~` marks list-price estimates (tokens x list rate), not invoices.
 
@@ -113,6 +113,8 @@ EOF
 | Touched-task F1 | 37.7% | 57.2% | **58.7%** |
 | Touched F1, 98 teacher-touched turns | 17.7% | 57.1% | **58.0%** |
 | Relationships / turn (Haiku 0.47) | 0.00 | 0.07 | **0.16** |
+
+Other untuned models on the same 131 turns: NVIDIA Nemotron 3 Ultra 64.6% touched-task F1 (99.2% valid); Qwen3-235B fp8 (OpenRouter) 57.8% (93.9% valid). Both are in the dataset's `eval/`.
 | Actor role match | 36.6% | 97.6% | 97.6% |
 | Actor state match | 36.6% | 22.0% | 26.8% |
 
@@ -128,13 +130,12 @@ python3 scripts/v02/eval_summary.py > /tmp/eval-summary.json                    
 
 The public dataset holds all 131 held-out turns for every arm, so the scorer reproduces the table above exactly.
 
-The dashboard numbers above are the 131-turn values, computed before the removal.
 
 **Re-run the predictions** (needs your own vLLM endpoint with the adapters, see [training-nebius-token-factory.md](training-nebius-token-factory.md#serving)): `scripts/v02/modal_h100_eval.sh` (base + v1) and `scripts/v02/modal_mt2_val.sh` (v2). Both read `MODAL_ENDPOINT` and `MODAL_VLLM_KEY`.
 
 **Rollouts (not teacher-forced).** The leaderboard on the v0.3 lean tab shows causal rollouts, where each model builds its own graph over Day 1 (`scripts/v02/window_metrics.py`: valid share, calls/turn, relationships/turn, task updates/turn, USD, throughput). These count output only; they are not quality scores. On the held-out slice 1523 to 1902 the base emits 0.02 relationships/turn and LoRA v1 0.17. LoRA v2 was not rolled out.
 
-**Cost (~95% cheaper):** USD per 1k turns, list-price estimates. Haiku: same turns, ledger tokens x plain Haiku rate, including its harness prompt and retries = USD 14.06. LoRA v2: its own tokens x the Qwen3-30B-A3B Token Factory rate = USD 0.73. Saving = 0.948. If Haiku is priced on the LoRA's own prompt tokens instead, the saving is ~91%. The LoRA actually ran on Modal GPU-hours, which have no per-token ledger.
+**Cost (~95% cheaper, hypothetical):** a token-price comparison, not a bill: the LoRA is priced at the Qwen3-30B-A3B Token Factory base-model rate, but it actually ran on Modal GPU-hours, and its prompt differs from Haiku's. USD per 1k turns, list-price estimates. Haiku: same turns, ledger tokens x plain Haiku rate, including its harness prompt and retries = USD 14.06. LoRA v2: its own tokens x the Qwen3-30B-A3B Token Factory rate = USD 0.73. Saving = 0.948. If Haiku is priced on the LoRA's own prompt tokens instead, the saving is ~91%. The LoRA actually ran on Modal GPU-hours, which have no per-token ledger.
 
 ## Caveats
 

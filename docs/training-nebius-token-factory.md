@@ -32,6 +32,8 @@ python3 scripts/v02/export_multi_teacher.py --max-tokens 8128 --fit-reserve 1024
   --snapshot-from data/v02/_multi-teacher/qwen3-30b-a3b-lora-v1-8k-m64 --name qwen3-30b-a3b-lora-v1-8k-fit
 ```
 
+Reproduced from the public dataset (after `scripts/setup_public_data.sh`): the v1 commands above, with `--snapshot-from data/v02/_multi-teacher/qwen3-30b-a3b-lora-v1-8k-m64` on the first one, regenerate all 1653 released training rows byte-identically (messages), plus 10 rows that were originally just over the 8128-token limit and fit after sanitization shortened their text; 129 of 131 validation rows are identical. Without the snapshot cap the exporter stops at turn 1665, where a removed session's turn is missing from the teachers' graph history.
+
 Output per export: `train.jsonl`, `validation.jsonl` (OpenAI chat format, one `messages` triple per row) and `manifest.json` (hashes, split, per-teacher stats, dropped rows). The released files were sanitized after training, so their sha256 no longer equals the hashes in the training cards.
 
 ## 2. Upload the files

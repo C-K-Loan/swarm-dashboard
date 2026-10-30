@@ -24,4 +24,5 @@ These were written while building and are kept as a record. Where they disagree 
 | [v02/nemotron-free-comparison.md](v02/nemotron-free-comparison.md) | Nemotron comparison runs |
 | [eval/schema-v0.2-and-metrics.md](eval/schema-v0.2-and-metrics.md), [eval/schema-v0.2-synthesis.md](eval/schema-v0.2-synthesis.md), [eval/research-findings.md](eval/research-findings.md) | the earlier per-message classifier schema (Stage 1 v0.2), not the state graph |
 | [eval/compare_report.md](eval/compare_report.md) | Stage 1 classifier comparison vs Claude Opus labels |
-| `charts/`, `architecture.svg` | figures |
+| `media/` | README GIFs: explainers and dashboard captures |
+| `charts/`, `architecture.svg` | legacy V0.1 hackathon figures (pseudo-label era; numbers superseded by eval.md) |

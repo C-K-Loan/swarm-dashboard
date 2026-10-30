@@ -37,8 +37,8 @@ As shown on the dashboard's **eval -> Summary** tab. Every reference is a model;
 |---|---|---|---|
 | Stage 1 · Prose v1 | Qwen3-30B-A3B | **55.6%** per-field agreement with Claude Opus 5.5 labels (majority baseline 59.1%) | no cost on record |
 | Stage 2 · Prose v2 | Qwen3-235B | **0.94** F1 vs Claude Haiku 4.5 merges (lenient; strict 0.89) | **~90% cheaper** |
-| State graph · v0.3 lean | Qwen3-30B-A3B + LoRA v2 | **58.7%** touched-task F1 vs Claude Haiku 4.5 labels | **~95% cheaper** (~91% priced on the same prompt) |
-| Overall (Stage 2 + state graph) | | | **~92% cheaper** |
+| State graph · v0.3 lean | Qwen3-30B-A3B + LoRA v2 | **58.7%** touched-task F1 vs Claude Haiku 4.5 labels | **~95% cheaper**: hypothetical token-price comparison (LoRA priced at a Token Factory base-model rate; it actually ran on Modal; prompts differ; same-prompt proxy ~91%) |
+| Overall (Stage 2 + state graph) | | | **~92% cheaper** (unweighted mean of the two stage savings) |
 
 State graph, 131 held-out turns, teacher-forced:
 
@@ -71,7 +71,7 @@ Stage 2 mergers, mean F1 over four tree levels: Qwen3-235B 0.94, Qwen3-8B 0.76, 
 ![Training and eval on Nebius Token Factory](docs/media/explainer-training-eval.gif)
 - Serverless open-model inference with no infrastructure: Qwen3-30B-A3B labeled all 1,902 day-one turns at about 1,950 turns per hour for USD 0.76; Qwen3-235B merged the summaries of the whole 9-day jam in 7 minutes for USD 0.34; Qwen3-30B-A3B also writes the Stage 1 hourly bullets.
 - LoRA fine-tuning: two Qwen3-30B-A3B LoRA jobs (16 and 22 minutes) on teacher-labeled data, no GPU setup. Recipe: [docs/training-nebius-token-factory.md](docs/training-nebius-token-factory.md).
-- The fine-tuned 30B then matches an untuned Qwen3-235B on held-out turns at about 19x lower inference cost than Claude Haiku.
+- The fine-tuned 30B then matches an untuned Qwen3-235B (fp8) on held-out turns at about 19x lower inference cost than Claude Haiku.
 
 ![Agent-to-agent comms with the transcript following](docs/media/dashboard-a2a-transcript.gif)
 
