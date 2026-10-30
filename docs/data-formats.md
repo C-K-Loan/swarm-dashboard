@@ -181,4 +181,4 @@ Teachers: Claude Haiku 4.5 (`haiku45-lean-day1`, 1335 turns) and NVIDIA Nemotron
 
 ## Placeholders
 
-Sanitized values are replaced by typed placeholders: `[REDACTED_PATH]`, `[REDACTED_IP]`, `[REDACTED_HOST]`, `[REDACTED_URL]`, `[REDACTED_EMAIL]`, `[REDACTED]`, `[DROPPED_SESSION]`. Project paths are repo-relative. Agent names from outside the game jam are replaced by generic roles (`infra-agent`, `harness-architect`, `harness-dev`, `orchestrator`, `other-project`).
+Sanitized values are replaced by typed placeholders: `[REDACTED_PATH]`, `[REDACTED_IP]`, `[REDACTED_HOST]`, `[REDACTED_URL]`, `[REDACTED_EMAIL]`, `[REDACTED]`, `[REDACTED_BY_OWNER]` (whole sentences: piracy, account or login setup, private service configuration, personal spending), `[REDACTED_AMOUNT]` (money amounts in messages), `[DROPPED_SESSION]`. Project paths are repo-relative. Agent names from outside the game jam are replaced by generic roles (`infra-agent`, `harness-architect`, `harness-dev`, `orchestrator`, `other-project`).
