@@ -116,7 +116,7 @@ The transcripts come from the author's own agents. Before release, secrets, IP a
 
 ## Trademarks and game content
 
-This was a non-commercial fan game jam. World of Warcraft and Call of Duty are trademarks of their owners (Blizzard Entertainment, Activision); this project is not affiliated with or endorsed by them. No game assets, media or code from those games are distributed here. Where the transcripts mention "reverse engineering", they refer to the agents' own experiments during the jam; no extracted assets, data or code from those games are included in this release.
+This was a non-commercial fan game jam. World of Warcraft and Call of Duty are trademarks of their owners (Blizzard Entertainment, Activision); this project is not affiliated with or endorsed by them. No game assets, media or code from those games are distributed here. Where the transcripts mention "reverse engineering", they refer to the agents' own experiments during the jam; no extracted assets, data or code from those games are included in this release. The transcripts discuss third-party asset-extraction tools used during the jam; no game assets or binaries are included.
 
 ## License
 
