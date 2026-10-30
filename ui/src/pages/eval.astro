@@ -1,0 +1,5 @@
+---
+import EvalPage from "../components/eval/EvalPage.astro";
+export const prerender = false;
+---
+<EvalPage schema={Astro.url.searchParams.get("schema")} />

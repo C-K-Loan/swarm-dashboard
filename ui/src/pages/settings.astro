@@ -1,0 +1,371 @@
+---
+import Layout from "../layouts/Layout.astro";
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+
+// Live counts from data files
+function safeRead(p: string) {
+  try { return fs.readFileSync(p, "utf-8"); } catch { return null; }
+}
+function safeJson<T = any>(p: string): T | null {
+  const raw = safeRead(p);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+const cost: any = safeJson(path.resolve("../data/cost_summary.json"));
+const timeline: any = safeJson(path.resolve("../data/timeline.json"));
+const artifacts: any = safeJson(path.resolve("../data/artifacts.json"));
+const fleetIdx: any = safeJson(path.resolve("../data/fleet_index.json"));
+const remoteHosts: any = safeJson(path.resolve("../data/remote_hosts.json"));
+const liveCfg: any = safeJson(path.resolve("../data/live_refresh_config.json"));
+
+// Prose per-provider counts via scanning data/prose/*.jsonl line counts
+const proseDir = path.resolve("../data/prose");
+type ProseStats = { file: string; lines: number; provider: string | null };
+const proseStats: ProseStats[] = [];
+try {
+  for (const f of fs.readdirSync(proseDir)) {
+    if (!f.endsWith(".jsonl")) continue;
+    const fp = path.join(proseDir, f);
+    const raw = fs.readFileSync(fp, "utf-8");
+    const lines = raw.split("\n").filter((l: string) => l).length;
+    let provider: string | null = null;
+    const first = raw.split("\n")[0];
+    if (first) {
+      try { provider = JSON.parse(first).provider || null; } catch {}
+    }
+    proseStats.push({ file: f, lines, provider });
+  }
+} catch {}
+
+const proseByProvider: Record<string, number> = {};
+for (const s of proseStats) {
+  const key = s.provider || "unknown";
+  proseByProvider[key] = (proseByProvider[key] || 0) + s.lines;
+}
+
+const sessionsByProvider: Record<string, number> = {};
+if (timeline?.agents) {
+  for (const a of timeline.agents) {
+    const k = a.provider || "unknown";
+    sessionsByProvider[k] = (sessionsByProvider[k] || 0) + 1;
+  }
+}
+
+const projectCounts: Record<string, number> = {};
+if (timeline?.agents) {
+  for (const a of timeline.agents) {
+    const p = a.project || "(none)";
+    projectCounts[p] = (projectCounts[p] || 0) + 1;
+  }
+}
+
+const mediaTotal = artifacts
+  ? Object.values(artifacts).reduce((s: number, a: any) => s + (a as any[]).filter((x) => x.kind === "media").length, 0)
+  : 0;
+
+// Build + git info
+let gitSha: string | null = null;
+try {
+  gitSha = execSync("git rev-parse --short HEAD", { cwd: path.resolve("../") }).toString().trim();
+} catch {}
+const builtAt = new Date().toISOString();
+
+// RUBRIC_PROMPT loaded from classify_batch.py
+let rubricSnippet = "";
+try {
+  const scr = fs.readFileSync(path.resolve("../scripts/classify_batch.py"), "utf-8");
+  const m = scr.match(/RUBRIC_PROMPT\s*=\s*(['"]{3})([\s\S]*?)\1/);
+  if (m) rubricSnippet = m[2].trim();
+  else {
+    // Fallback: f-string block
+    const m2 = scr.match(/RUBRIC_PROMPT\s*=\s*f?(['"]{3})([\s\S]*?)\1/);
+    if (m2) rubricSnippet = m2[2].trim();
+  }
+} catch {}
+---
+<Layout title="Settings · swarm-board">
+  <main class="settings-page">
+    <header class="s-page-header">
+      <h1>Settings & Transparency</h1>
+      <p class="hint">What the dashboard ingests, how it parses it, how it classifies it, what it costs. Everything deterministic — no magic.</p>
+    </header>
+
+    <section class="s-card">
+      <h2>1 · Chat sources</h2>
+      <p>Session transcripts ingested into prose extractor:</p>
+      <table class="s-table">
+        <thead><tr><th>Source</th><th>Path pattern</th><th>Sessions</th><th>Messages</th><th>Provider</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Claude Code (modern)</td>
+            <td><code>[REDACTED_PATH]*/*.jsonl</code></td>
+            <td>{sessionsByProvider.claude || 0}</td>
+            <td>{(proseByProvider.claude || 0).toLocaleString()}</td>
+            <td>claude</td>
+          </tr>
+          <tr>
+            <td>Claude Code (legacy)</td>
+            <td><code>~/.claude/projects/*/*.jsonl</code></td>
+            <td>— (merged above)</td>
+            <td>— (merged above)</td>
+            <td>claude</td>
+          </tr>
+          <tr>
+            <td>Codex (OpenAI CLI)</td>
+            <td><code>~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl</code></td>
+            <td>{sessionsByProvider.codex || 0}</td>
+            <td>{(proseByProvider.codex || 0).toLocaleString()}</td>
+            <td>codex</td>
+          </tr>
+          <tr>
+            <td>cct-dash bundle index</td>
+            <td><code>[REDACTED_PATH]*.json</code></td>
+            <td>4 bundled projects</td>
+            <td>{((proseByProvider.claude || 0)).toLocaleString()}</td>
+            <td>mixed (metadata only)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="s-note">Scope caveat — currently ingesting <strong>4 Claude projects</strong> (gamejam, other-project, other-project, other-project) plus <strong>{sessionsByProvider.codex || 0} codex sessions</strong> attributed by <code>cwd</code> → project. The cct-dash bundle index lists 39 fleets / 200+ projects — the rest is future work.</p>
+    </section>
+
+    <section class="s-card">
+      <h2>2 · Parsing rules</h2>
+      <ul>
+        <li><strong>Prose-only filter</strong>: strip every <code>tool_use</code> / <code>tool_result</code> / <code>function_call</code> / <code>function_call_output</code> block, keep assistant + user text blocks only. Yields ~3% of raw transcript volume. Rationale: 97% of transcript tokens are code + tool chatter; the 3% that remains carries all state signal.</li>
+        <li><strong>Metadata flags per turn</strong>: <code>tool_call_count</code>, <code>has_error</code>, <code>has_file_edit</code>, <code>is_subagent_report</code>, <code>char_len</code>, <code>phase</code> (codex: commentary|final_answer).</li>
+        <li><strong>Agent identity resolution (codex)</strong> — rules applied in order:
+          <ol>
+            <li><code>[REDACTED_PATH];proj&gt;/worktrees/&lt;branch&gt;</code> → agent = <code>&lt;branch&gt;</code></li>
+            <li><code>[REDACTED_PATH];proj&gt;</code> (root) → agent = <code>&lt;proj&gt;-master</code></li>
+            <li><code>[REDACTED_PATH]</code> → agent = <code>other-project</code> (test-harness flag set)</li>
+            <li><code>[REDACTED_PATH]</code> (bare) → <code>codex-adhoc</code>, project=<code>other-project</code></li>
+            <li><code>[REDACTED_PATH]</code> → <code>claude-folder-codex</code>, project=<code>other-project</code></li>
+            <li><code>/tmp/*</code> → <code>scratchpad-codex</code></li>
+            <li>fallback → <code>basename(cwd)</code>, project=<code>dirname.basename</code></li>
+          </ol>
+        </li>
+        <li><strong>Model resolution</strong>: Claude from message metadata; Codex from <code>turn_context.model</code> events (yields <code>gpt-6.1-sol</code>, <code>gpt-5.5</code>, <code>gpt-5.6-luna</code>, etc) with fallback to <code>session_meta.base_instructions</code> GPT-N parse.</li>
+        <li><strong>Media discovery</strong>: scan <code>dist/videos/</code>, <code>dist/screenshots/</code>, <code>dist/diary/media/</code> by mtime; attribute to session windows with 2-min grace. 3,499 gamejam diary media files found.</li>
+        <li><strong>Diary caption extraction</strong>: parse <code>dist/diary/index.html</code> via custom HTMLParser; 388 cards matched to media by basename stem (video stem matches poster png).</li>
+      </ul>
+    </section>
+
+    <section class="s-card">
+      <h2>3 · Classification rules</h2>
+      <ul>
+        <li><strong>Classifier model</strong>: Qwen3-30B-A3B-Instruct-2507 via Nebius Token Factory. Pricing <code>$0.10/1M in</code>, <code>$0.30/1M out</code>.</li>
+        <li><strong>Schema v0.1 fields</strong>: <code>user_intent</code>, <code>agent_intent</code>, <code>agent_role</code>, <code>blocker_type</code>, <code>urgency</code></li>
+        <li><strong>Classification granularity</strong>: current rows carry an implicit <code>aggregation = "turn"</code>. The dashboard supports <code>turn / 15min / hour / 4h / day</code> zoom levels; aggregated zooms synthesize from per-turn classifications at render time. Chunk-granularity classifier runs (where the model summarizes a whole 4h window at once instead of per-turn) are a planned Devpost polish-week deliverable — schema reserves an <code>aggregation</code> field but no chunk rows are populated yet.</li>
+        <li><strong>Enum values</strong>:
+          <ul>
+            <li><em>agent_intent</em>: implement-feature, fix-bug, refactor, review, test, document, investigate, deploy, report-progress, handoff, summary, ask-clarification, celebration, idle</li>
+            <li><em>agent_role</em>: dev, reviewer, planner, qa, ops, researcher, manager, bus-tool, data</li>
+            <li><em>blocker_type</em>: null | context-exhausted | waiting-human | missing-tool | rate-limit | tool-failure | test-failure | network | process | ambiguous-spec</li>
+            <li><em>urgency</em>: null | low | mid | high</li>
+          </ul>
+        </li>
+        <li><strong>Pseudo-truth reference</strong>: Claude Opus run on 200 hold-out messages (coming in v11-J). Agreement vs Claude Opus reported per field. Not called &quot;ground truth&quot; — judges will respect the honest framing.</li>
+      </ul>
+      {rubricSnippet && (
+        <details>
+          <summary>Full RUBRIC_PROMPT (click to expand)</summary>
+          <pre class="s-pre">{rubricSnippet}</pre>
+        </details>
+      )}
+    </section>
+
+    <section class="s-card">
+      <h2>4 · Cost breakdown</h2>
+      {cost && (
+        <table class="s-table">
+          <thead><tr><th>Model</th><th>Cost (USD)</th><th>Ratio vs ours</th><th>Provider</th></tr></thead>
+          <tbody>
+            <tr class="s-ours">
+              <td><strong>Nebius · {cost.ours.model}</strong></td>
+              <td><strong>${cost.ours.cost_usd.toFixed(4)}</strong></td>
+              <td><strong>1×</strong></td>
+              <td>Nebius Token Factory (OURS)</td>
+            </tr>
+            {Object.entries(cost.baselines).map(([k, v]: [string, any]) => (
+              <tr>
+                <td>{k}</td>
+                <td>${v.cost_usd.toFixed(4)}</td>
+                <td>{v.ratio}× more</td>
+                <td>reference baseline</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p class="s-note">{cost ? `${cost.msgs.toLocaleString()} classifications · ${cost.tokens_in.toLocaleString()} in / ${cost.tokens_out.toLocaleString()} out tokens.` : 'cost summary missing'}</p>
+    </section>
+
+    <section class="s-card">
+      <h2>5 · Version · build</h2>
+      <table class="s-table s-kv">
+        <tbody>
+          <tr><td>Schema</td><td><code>v0.1</code></td></tr>
+          <tr><td>Dashboard</td><td><code>v11</code> (post-N codex rename, fleet dropdown, settings tab)</td></tr>
+          <tr><td>Git SHA</td><td><code>{gitSha || '(not a git repo yet)'}</code></td></tr>
+          <tr><td>Built at</td><td><code>{builtAt}</code></td></tr>
+          <tr><td>Nebius API</td><td><code>https://api.studio.nebius.ai/v1</code></td></tr>
+          <tr><td>Models in rotation</td><td><code>Qwen3-30B-A3B · Gemma-3-27B · Nemotron Nano 30B A3B</code></td></tr>
+          <tr><td>Media attributed</td><td><code>{mediaTotal.toLocaleString()} files</code> across {artifacts ? Object.keys(artifacts).length : 0} sessions</td></tr>
+          <tr><td>Agents observed</td><td><code>{timeline?.agents?.length || 0}</code> sessions across <code>{Object.keys(projectCounts).length}</code> projects</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="s-card">
+      <h2>6 · Fleet classification coverage</h2>
+      {fleetIdx && (
+        <>
+          <p>{fleetIdx.stats.classified_count} canonical fleets classified, {fleetIdx.stats.unclassified_count} tracked but unclassified, {fleetIdx.privacy_locked.length} privacy-locked. {fleetIdx.stats.total_canonical} canonical fleets after sibling-merge (<code>other-project</code> + <code>ghost-development</code> + <code>ghost-bencher</code> + <code>other-project</code> &rarr; <code>ghost</code>, etc).</p>
+          <table class="s-table">
+            <thead><tr><th>fleet</th><th>status</th><th>sessions</th><th>msgs</th><th>$ (historic)</th><th>sources</th></tr></thead>
+            <tbody>
+              {fleetIdx.fleets.map((f: any) => (
+                <tr>
+                  <td><code>{f.canonical}</code></td>
+                  <td>{f.privacy_locked ? <span style="color:var(--err)">🔒 privacy-locked</span> : f.classified ? <span style="color:var(--accent)">✓ classified</span> : <span style="color:var(--muted)">∅ untracked</span>}</td>
+                  <td>{f.sessions}</td>
+                  <td>{f.classified_msgs.toLocaleString()}</td>
+                  <td>${f.cost_usd.toFixed(0)}</td>
+                  <td style="color:var(--muted); font-size:10px">{f.sources.join(", ") || "(none)"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="s-note">Classify budget is a manual decision — the dashboard will NOT auto-run the classifier on untracked fleets. Click "request classification" on an unclassified fleet in the timeline view to log interest.</p>
+        </>
+      )}
+    </section>
+
+    <section class="s-card">
+      <h2>7 · Remote hosts (multi-host scrape)</h2>
+      <p>CCT runs on multiple machines; this dashboard unifies codex sessions from each enabled host. Pull-only via <code>rsync</code> — no state is written to remote hosts. The scraper lives at <code>scripts/scrape_remote_hosts.py</code> and respects the same privacy blocklist (<code>[REDACTED]/</code>, <code>[REDACTED]/</code>).</p>
+      <table class="s-table">
+        <thead>
+          <tr><th>host</th><th>ssh target</th><th>path</th><th>enabled</th><th>last scraped</th><th>rollout files</th><th>status</th></tr>
+        </thead>
+        <tbody>
+          {(remoteHosts?.hosts || []).map((h: any) => (
+            <tr>
+              <td><strong>{h.name}</strong></td>
+              <td><code>{h.ssh_target || "—"}</code></td>
+              <td><code>{h.path}</code></td>
+              <td>{h.enabled ? "✓" : "∅"}</td>
+              <td>{h.last_scraped || "—"}</td>
+              <td>{h.rollout_files ?? (h.name === "local" ? 398 : "—")}</td>
+              <td>{h.enabled && h.last_scraped ? "✓ scraped" : (h.enabled ? "⚠ pending" : "∅ disabled")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p class="s-note">To add a host: edit <code>data/remote_hosts.json</code> and run <code>python3 scripts/scrape_remote_hosts.py</code>. The rsync pulls to <code>data/remote-codex/&lt;name&gt;/</code> which <code>extract_codex_prose.py</code> picks up automatically on the next extraction run. Each prose row carries a <code>host</code> field so downstream dashboards can decompose by machine.</p>
+      <p class="s-note">Live-trigger "rescrape" button is Devpost polish-week scope; for Sunday the config is read-only + the script is invoked manually (file-watcher pattern deferred).</p>
+    </section>
+
+    <section class="s-card">
+      <h2>8 · Color coding</h2>
+      <p>Timeline cells and sidebar chips use a consistent palette. States drive cell fill, model families drive the small text badge in the agent-name column, urgency maps to opacity.</p>
+      <h3 style="margin-top:12px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">states (cell fill)</h3>
+      <table class="s-table">
+        <thead><tr><th>state</th><th>hex</th><th>what triggers it</th></tr></thead>
+        <tbody>
+          <tr><td><span class="s-swatch" style="background:#5cff8c"></span> working</td><td><code>#5cff8c</code></td><td>intent in {"{report-progress, handoff, summary, celebration}"} and no blocker set</td></tr>
+          <tr><td><span class="s-swatch" style="background:#ffff5c"></span> waiting</td><td><code>#ffff5c</code></td><td>intent=ask-clarification, or blocker with urgency=low</td></tr>
+          <tr><td><span class="s-swatch" style="background:#ff5c6c"></span> blocked</td><td><code>#ff5c6c</code></td><td>any blocker_type set with urgency in {"{mid, high}"}</td></tr>
+          <tr><td><span class="s-swatch" style="background:#ffb86c"></span> context-exhausted</td><td><code>#ffb86c</code></td><td>blocker_type=context-exhausted (special-cased: always this color regardless of urgency)</td></tr>
+          <tr><td><span class="s-swatch" style="background:#2a2a3a"></span> idle</td><td><code>#2a2a3a</code></td><td>no classified turn landed in this time window</td></tr>
+        </tbody>
+      </table>
+      <h3 style="margin-top:14px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">model families (name-column text badge)</h3>
+      <table class="s-table">
+        <thead><tr><th>family</th><th>hex</th><th>matches</th></tr></thead>
+        <tbody>
+          <tr><td><span class="s-swatch" style="background:#c9a0ff"></span> opus</td><td><code>#c9a0ff</code></td><td>claude-opus-*</td></tr>
+          <tr><td><span class="s-swatch" style="background:#8fb8ff"></span> sonnet</td><td><code>#8fb8ff</code></td><td>claude-sonnet-*</td></tr>
+          <tr><td><span class="s-swatch" style="background:#5cff8c"></span> haiku</td><td><code>#5cff8c</code></td><td>claude-haiku-*</td></tr>
+          <tr><td><span class="s-swatch" style="background:#ff9fe0"></span> fable</td><td><code>#ff9fe0</code></td><td>claude-fable-*</td></tr>
+          <tr><td><span class="s-swatch" style="background:#2eff6a"></span> gpt</td><td><code>#2eff6a</code></td><td>gpt-* (codex native)</td></tr>
+          <tr><td><span class="s-swatch" style="background:#ffb86c"></span> qwen</td><td><code>#ffb86c</code></td><td>Qwen3-* (our classifier)</td></tr>
+        </tbody>
+      </table>
+      <h3 style="margin-top:14px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">message kinds (transcript bubbles)</h3>
+      <table class="s-table">
+        <thead><tr><th>kind</th><th>bg hex</th><th>origin</th><th>alignment</th></tr></thead>
+        <tbody>
+          <tr><td><span class="s-swatch" style="background:#1b2d47"></span> 👤 human</td><td><code>#1b2d47</code></td><td>CKL typing a prompt to an agent</td><td>left</td></tr>
+          <tr><td><span class="s-swatch" style="background:#2d2619"></span> 📬 a2a</td><td><code>#2d2619</code></td><td>agent-to-agent via cct send; envelope starts <code>[from &lt;sender&gt;]</code></td><td>left</td></tr>
+          <tr><td><span class="s-swatch" style="background:#19261c"></span> 🤖 agent</td><td><code>#19261c</code></td><td>agent assistant prose output</td><td>right</td></tr>
+          <tr><td><span class="s-swatch" style="background:#231a2d"></span> ↪ subagent</td><td><code>#231a2d</code></td><td>nested subagent reply (<code>Task</code> tool wrapper)</td><td>right (inset, italic)</td></tr>
+        </tbody>
+      </table>
+      <h3 style="margin-top:14px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;">urgency + extras</h3>
+      <ul>
+        <li><strong>urgency → opacity</strong>: cells with urgency=high render at 1.0, mid at 0.85, low at 0.55. Lets you spot high-urgency moments at a glance even in a sea of blocked cells.</li>
+        <li><strong>thumbnail tint overlay</strong>: when a cell is wide enough (≥4px) and the session has a media artifact in that window, we render the latest-mtime PNG poster clipped to the cell, then overlay the state color at 55% opacity. Gives you "I can see what the agent made AND whether it was blocked" in one glance.</li>
+        <li><strong>chip-err</strong>: in sidebar label chips (summary panel's blocker list), the <code>chip-err</code> class uses <code>rgba(255,92,108,0.15)</code> background with <code>var(--err)</code> text so blocker types pop against the panel.</li>
+      </ul>
+    </section>
+
+    <section class="s-card">
+      <h2>9 · Live refresh daemon (v14-HH)</h2>
+      <p>When enabled, <code>scripts/live_refresh_daemon.py</code> loops every <code>interval_sec</code> seconds pulling fresh codex rollouts (local + enabled remote hosts), classifying new assistant prose rows, baking bucket summaries, and rebuilding every dashboard index. On each successful tick it writes a timestamp to <code>ui/public/data/last-refresh.txt</code>; the browser polls that sentinel every 30s and auto-reloads changed data, preserving the current selection, zoom and scroll position.</p>
+      <table class="s-table s-kv">
+        <tbody>
+          <tr><td>enabled</td><td>{liveCfg?.enabled ? "✓ yes" : "∅ no (daemon paused)"}</td></tr>
+          <tr><td>interval</td><td>{liveCfg?.interval_sec ?? 60} seconds</td></tr>
+          <tr><td>budget hard-stop</td><td>${liveCfg?.budget_hard_stop_usd ?? 2.80}</td></tr>
+          <tr><td>hourly soft cap</td><td>${liveCfg?.budget_hourly_soft_cap_usd ?? 0.05}/hr</td></tr>
+          <tr><td>last tick</td><td>{liveCfg?.last_tick ?? "—"}</td></tr>
+          <tr><td>last tick status</td><td>{liveCfg?.status ?? "—"}</td></tr>
+          <tr><td>last tick new rows</td><td>{liveCfg?.last_tick_new_rows ?? "—"}</td></tr>
+          <tr><td>last tick classified</td><td>{liveCfg?.last_tick_classified_rows ?? "—"}</td></tr>
+          <tr><td>last tick spend</td><td>{liveCfg?.last_tick_delta_cents ?? 0}¢</td></tr>
+          <tr><td>cumulative Nebius</td><td>${liveCfg?.last_tick_cost ?? (cost?.nebius_total_cost_usd ?? cost?.ours?.cost_usd ?? "—")}</td></tr>
+        </tbody>
+      </table>
+      <p class="s-note">To start the daemon: <code>python3 scripts/live_refresh_daemon.py --interval 60 &</code>. To stop: find PID in <code>ps aux | grep live_refresh</code> and <code>kill</code>; or edit <code>data/live_refresh_config.json</code> and set <code>enabled: false</code> (the daemon re-reads config each cycle and will sleep when disabled). Live indicator in the header: 🟢 pulsing = daemon reachable + ticking · gray = static (no sentinel) · 🟠 flash = fresh data just landed.</p>
+    </section>
+
+    <section class="s-card">
+      <h2>10 · Honest footnotes</h2>
+      <ul>
+        <li><strong>Codex coverage, gamejam project</strong>: {proseByProvider.codex || 0} codex msgs across {sessionsByProvider.codex || 0} codex sessions; vs {proseByProvider.claude || 0} Claude msgs. Codex was used sparingly; most gamejam orchestration was Claude Opus on <code>gamejam-master</code>. Dashboard reflects reality — nothing is missing.</li>
+        <li><strong>other-project test-harness</strong>: 216 other-project sessions are legacy test runs with <code>text-ada-*</code> / <code>text-davinci-*</code> models from CKL's old workspace. Carried on the <code>is_test_harness: true</code> flag; shown unfiltered for completeness.</li>
+        <li><strong>cost ticker</strong>: live-regenerated via <code>scripts/regen_cost_summary.py</code> — reads <code>data/classified/*.jsonl</code>, sums <code>usage.cost_usd</code>, applies pinned ratios (Haiku 9×, 4o-mini 1.6×, 4o 26.6×, Sonnet 33.9×) that were measured once on the hold-out set.</li>
+      </ul>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .settings-page { padding: 16px 24px; max-width: 1200px; margin: 0 auto; }
+  .s-page-header h1 { margin: 0 0 4px; font-size: 20px; }
+  .s-page-header .hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .s-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin-top: 14px; }
+  .s-card h2 { margin: 0 0 10px; font-size: 14px; color: var(--accent); font-family: var(--mono); font-weight: 600; letter-spacing: 0.02em; }
+  .s-card p { margin: 6px 0; color: var(--text); font-size: 13px; }
+  .s-card ul, .s-card ol { margin: 6px 0; padding-left: 20px; }
+  .s-card li { margin: 4px 0; color: var(--text); font-size: 13px; line-height: 1.5; }
+  .s-card code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .s-note { color: var(--muted); font-style: italic; font-size: 12px; margin-top: 10px; }
+
+  .s-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+  .s-table th, .s-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .s-table th { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; background: var(--panel-2); }
+  .s-table tr.s-ours { background: rgba(0,232,198,0.06); }
+  .s-table tr.s-ours td { color: var(--accent); }
+  .s-table.s-kv td:first-child { color: var(--muted); font-family: var(--mono); font-size: 11px; width: 180px; }
+
+  .s-pre { background: #0a0b10; color: #d8dbe2; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 11px; font-family: var(--mono); max-height: 400px; overflow: auto; }
+  .s-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.3); }
+  details { margin-top: 10px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 12px; font-family: var(--mono); padding: 4px 0; }
+</style>

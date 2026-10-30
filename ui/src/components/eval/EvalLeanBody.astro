@@ -1,0 +1,194 @@
+---
+// v0.3 lean state-graph eval: held-out val, rollout leaderboard, training, spend.
+import '../../styles/eval-v2.css';
+---
+  <main class="eval-page v2eval">
+    <section class="hero">
+      <h1>CCT Summarizer V0.2 · LoRA Eval <span class="status-pill" id="eval-status">loading</span></h1>
+      <p class="lede" id="eval-sub">Qwen3-30B-A3B base vs our LoRA fine-tunes on turns never seen in training, every summarizer run side by side, training and spend. Live from the run data.</p>
+      <div class="hero-row">
+        <div class="legend">
+          <span class="chip chip-cand"><i></i> base / other models</span>
+          <span class="chip chip-v2"><i></i> LoRA v2 (ours)</span>
+          <span class="chip chip-truth"><i></i> reference (Haiku 4.5)</span>
+        </div>
+        <div class="actions"><button type="button" id="refresh">Refresh</button><a href="/eval-review" class="frozen-hide">Human-review audit</a><a href="/eval-v01" class="frozen-hide">V0.1 archive</a></div>
+      </div>
+      <p id="eval-error" class="hint hint-warn" role="alert" hidden></p>
+    </section>
+
+    <section class="kpi-row">
+      <div class="kpi"><div class="kpi-n ours" id="kpi-f1">—</div><div class="kpi-l" id="kpi-f1-l">touched-task F1 · LoRA</div></div>
+      <div class="kpi"><div class="kpi-n ours" id="kpi-valid">—</div><div class="kpi-l" id="kpi-valid-l">valid output · LoRA</div></div>
+      <div class="kpi"><div class="kpi-n" id="kpi-rows">—</div><div class="kpi-l">held-out val rows (turns 1203-1335) · bf16 H100</div></div>
+      <div class="kpi"><div class="kpi-n accent" id="kpi-paid">—</div><div class="kpi-l">paid API spend (TF + OpenRouter ledgers)</div></div>
+    </section>
+
+    <section class="card" id="headline-card">
+      <h2>Headline · base vs LoRA on the held-out val <span class="muted" id="headline-sub">— loading</span></h2>
+      <div class="scroll"><table class="eval-table" id="headline-table"></table></div>
+      <p class="hint" id="headline-note"></p>
+    </section>
+
+    <section class="card" id="leaderboard-card">
+      <h2>Rollout leaderboard <span class="muted">— each model labels the day on its own, from turn 1</span></h2>
+      <div class="tabs" role="tablist" id="window-tabs"></div>
+      <p class="hint" id="window-note" style="margin:0 0 10px"></p>
+      <div class="scroll"><table class="eval-table" id="leaderboard-table"></table></div>
+      <p class="hint">Coverage = turns labeled of the window. turns/h excludes pauses between calls. USD is each run's own call log (Haiku: list-price equivalent on the subscription, not paid). Run names open in the timeline.</p>
+      <p class="hint" id="not-run"></p>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <h2>Training <span class="muted">— Token Factory LoRA jobs</span></h2>
+        <div id="training-cards" class="train-grid"></div>
+      </div>
+      <div class="card">
+        <h2>Spend <span class="muted">— paid runs, from the spend ledgers</span></h2>
+        <div class="scroll"><table class="eval-table" id="spend-table"></table></div>
+        <p class="hint" id="spend-note"></p>
+      </div>
+    </section>
+    <p class="hint" id="generated-at"></p>
+  </main>
+
+
+
+
+<script>
+const $ = (id: string) => document.getElementById(id)!;
+const esc = (s: any) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+const num = (v: any, d = 2) => Number.isFinite(v) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: d, minimumFractionDigits: d }).format(v) : "—";
+const pct = (v: any) => Number.isFinite(v) ? (v * 100).toFixed(1) + "%" : "—";
+const usd = (v: any) => Number.isFinite(v) ? "USD " + v.toFixed(v >= 10 ? 2 : 3) : "—";
+let data: any = null, runs = new Set<string>(), win = "evalslice";
+
+// metric rows: label, key, kind (rate|num), higher-is-better, optional sub-row
+const HEAD: [string, (a: any) => any, "rate" | "num", boolean | null, boolean?][] = [
+  ["Valid output", a => a.valid_rate, "rate", true],
+  ["Calls / turn", a => a.calls_per_turn, "num", false],
+  ["Touched-task F1", a => a.touched_existing_f1, "rate", true],
+  ["precision", a => a.touched_existing_p, "rate", true, true],
+  ["recall", a => a.touched_existing_r, "rate", true, true],
+  ["Status agreement", a => a.status_agreement, "rate", true],
+  ["Actor state *", a => a.actor_state_match, "rate", true],
+  ["Actor role *", a => a.actor_role_match, "rate", true],
+  ["Relationships / turn", a => a.rels_per_turn, "num", null],
+  ["New-task count error", a => a.new_tasks_abs_diff_mean, "num", false],
+];
+const bar = (v: any, max: number, cls: string, text: string) => `<div class="bar ${cls}"><span class="track"><span class="fill" style="width:${Number.isFinite(v) && max > 0 ? Math.min(100, 100 * v / max) : 0}%"></span></span><span>${text}</span></div>`;
+
+function renderHeadline() {
+  const b = data.val.base, l = data.val.lora, l2 = data.val.lora2;
+  if (!b || !l) { $("headline-table").innerHTML = `<tr><td class="muted">Validation runs loading.</td></tr>`; return; }
+  const v2ok = l2 && l2.turns >= l.turns;
+  const tr = (data.training || []).find((c: any) => c.train_turns)?.train_turns, vr = l.turn_range;
+  $("headline-sub").textContent = `— ${l.turns} held-out rows, turns ${vr?.[0]}-${vr?.[1]}, after training turns ${tr ? tr[0] + "-" + tr[1] : "?"} with a ${vr && tr ? vr[0] - tr[1] - 1 : "?"}-turn gap · Haiku 4.5 labels as reference · same input for every arm`;
+  const best = v2ok ? l2 : l, tag = v2ok ? "LoRA v2" : "LoRA v1";
+  $("kpi-f1").textContent = pct(best.touched_existing_f1); $("kpi-f1-l").textContent = `touched-task F1 · ${tag} (base ${pct(b.touched_existing_f1)})`;
+  $("kpi-valid").textContent = pct(best.valid_rate); $("kpi-valid-l").textContent = `valid output · ${tag} (base ${pct(b.valid_rate)})`;
+  $("kpi-rows").textContent = String(l.turns);
+  for (const id of ["kpi-f1", "kpi-valid"]) $(id).style.color = v2ok ? "var(--col-v2)" : "";
+  const fmt = (v: any, k: string) => k === "rate" ? pct(v) : num(v);
+  const delta = (bv: any, lv: any, kind: string, up: boolean | null) => {
+    const d = Number.isFinite(bv) && Number.isFinite(lv) ? lv - bv : NaN;
+    const good = up === null || !Number.isFinite(d) || d === 0 ? "" : (d > 0) === up ? "up" : "down";
+    return `<td class="r delta ${good}">${!Number.isFinite(d) ? "—" : (d > 0 ? "+" : "") + (kind === "rate" ? (d * 100).toFixed(1) + " pt" : num(d))}</td>`;
+  };
+  // Base vs LoRA v2 only (CKL 2026-10-30: v1 is superseded); v1 stands in only until v2's val run is complete.
+  const o = best, cls = v2ok ? "v2" : "ours";
+  // Nemotron 3 Ultra, free route, untuned: same 131 exported prompts; shown once the run covers every row.
+  const nmAll = data.val.nemotron, nm = nmAll?.turns >= b.turns ? nmAll : null;
+  const rows = HEAD.map(([label, f, kind, up, sub]) => {
+    const bv = f(b), ov = f(o), rel = label.startsWith("Relationships");
+    const max = kind === "rate" ? 1 : Math.max(bv || 0, ov || 0, rel ? l.teacher_rels_per_turn : 0) || 1;
+    const teacher = rel ? bar(l.teacher_rels_per_turn, max, "truth", "reference " + num(l.teacher_rels_per_turn, 3)) : "";
+    const nbar = nm ? bar(f(nm), max, "nemo", "Nemotron 3 Ultra 550B-A55B (untuned; also a LoRA teacher) " + fmt(f(nm), kind)) : "";  // shown only when complete
+    return `<tr><td class="${sub ? "sub" : ""}">${esc(label)}</td><td><div class="pair">${bar(bv, max, "", "base " + fmt(bv, kind))}${bar(ov, max, cls, tag + " " + fmt(ov, kind))}${nbar}${teacher}</div></td>${delta(bv, ov, kind, up)}</tr>`;
+  });
+  $("headline-table").innerHTML = `<thead><tr><th>Metric</th><th>Base · ${tag}</th><th class="r">Δ ${tag}</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+  const ab = (a: any) => { const c = a.actor_breakdown.role; return `${c.match} match, ${c.omitted} omitted`; };
+  $("headline-note").innerHTML = `Agreement with the reference labels at each turn; an invalid output counts as an empty answer. `
+    + `* Actor fields: the reference sets them on ${o.actor_breakdown.role.teacher_sets} of ${o.turns} turns, and leaving a field out counts as agreeing with an empty value, so a high role score partly reflects omission (role, ${tag}: ${ab(o)}). `
+    + `Relationship F1 is not shown: most turns have no relationship in either answer, which scores 100%; relationships / turn shows the real gap.`;
+}
+
+function renderLeaderboard() {
+  const w = data.windows.find((x: any) => x.key === win) || data.windows[0]; win = w.key;
+  $("window-tabs").innerHTML = data.windows.map((x: any) => `<button type="button" role="tab" data-w="${x.key}" aria-selected="${x.key === win}">${esc(x.label)} · ${x.end - x.start + 1} turns · ${x.overlaps_training.length ? "overlaps training" : "holdout"}</button>`).join("");
+  const seen = [...new Set(w.overlaps_training.map((o: any) => o[0] + "-" + o[1]))].join(", ");
+  $("window-note").className = "hint " + (seen ? "hint-warn" : "");
+  $("window-note").textContent = seen ? `Turns ${seen} of this window were LoRA training turns. LoRA rows here are seen in training, not a holdout; use the eval slice for the LoRA comparison.` : `No turn in this window was used for training: a holdout for every row, including the LoRA arms.`;
+  const all = data.leaderboard.map((r: any) => ({ r, m: r.windows?.[win] }));
+  const rows = all.filter((x: any) => x.m?.turns);
+  const missing = all.filter((x: any) => !x.m?.turns).map((x: any) => x.r.label + (x.r.dataset ? " (" + x.r.host + ")" : ""));
+  $("not-run").textContent = "";  // runs without turns in this window are simply not listed
+  const scored = rows.filter((x: any) => x.m?.turns);
+  const best = (k: string, hi: boolean) => { const v = scored.map((x: any) => x.m[k]).filter(Number.isFinite); return v.length ? (hi ? Math.max(...v) : Math.min(...v)) : NaN; };
+  const bv = best("valid_pct", true), bc = best("calls_per_turn", false), bt = best("turns_per_h_median_gap", true);
+  const cell = (v: any, d: number, b?: number) => `<td class="r${Number.isFinite(b) && v === b ? " best" : ""}">${Number.isFinite(v) ? num(v, d) : "—"}</td>`;
+  const body = rows.map(({ r, m }: any) => {
+    const ours = /LoRA/.test(r.label), name = r.dataset ? (runs.has(r.dataset) ? `<a href="/timeline?fleet=gamejam&range=all&bucket=3600&labels=${encodeURIComponent(r.dataset)}" title="Open in the timeline label dropdown">${esc(r.dataset)}</a>` : esc(r.dataset)) : "—";
+    const cls = !r.dataset ? "pending" : ours ? "ours" : "";
+    const tag = ours && r.dataset && w.overlaps_training.length ? `<span class="seen">seen in training, not a holdout</span>` : "";
+    if (!m?.turns) return `<tr class="${cls || "pending"}"><td>${esc(r.label)}<span class="host">${esc(r.host)}</span>${tag}</td><td>${name}</td><td class="r">${r.dataset ? "0 / " + (w.end - w.start + 1) : "not trained yet"}</td><td colspan="6" class="muted">${r.dataset ? "no turns in this window yet" : "placeholder for the v2 adapter"}</td></tr>`;
+    return `<tr class="${cls}"><td>${esc(r.label)}<span class="host">${esc(r.host)}</span>${tag}</td><td>${name}</td><td class="r">${m.turns} / ${m.of}</td>${cell(m.valid_pct, 1, bv)}${cell(m.calls_per_turn, 2, bc)}${cell(m.relationships_per_turn, 3)}${cell(m.task_updates_per_turn, 3)}<td class="r">${usd(m.usd)}</td>${cell(m.turns_per_h_median_gap, 0, bt)}</tr>`;
+  }).join("");
+  $("leaderboard-table").innerHTML = `<thead><tr><th>Model</th><th>Run</th><th class="r">Coverage</th><th class="r">Valid %</th><th class="r">Calls/turn</th><th class="r">Rels/turn</th><th class="r">Task upd/turn</th><th class="r">USD</th><th class="r">Turns/h</th></tr></thead><tbody>${body}</tbody>`;
+}
+
+function renderTraining() {
+  const label: Record<string, string> = { job_id: "job", provider: "provider", base: "base", train_rows: "train rows", train_turns: "train turns", train_tokens: "train tokens", teachers: "teachers", max_tokens: "max tokens/row", train_loss: "train loss", val_loss: "val loss", minutes: "wall time", adapter: "adapter", served_as: "served as", dataset_sha256: "data sha256" };
+  // Only the newest finished adapter gets a full card; earlier ones are superseded and shown as a one-line note.
+  const done = (data.training || []).filter((c: any) => c.state === "done"), latest = done[done.length - 1];
+  const older = done.slice(0, -1).map((c: any) => `${c.version}: ${c.epochs} epoch${c.epochs > 1 ? "s" : ""}, ${c.train_rows} rows, ${c.minutes} min, superseded`);
+  $("training-cards").innerHTML = (data.training || []).filter((c: any) => c === latest).map((c: any) => {
+    if (c.state !== "done") return `<div class="tcard pending"><h3>LoRA ${esc(c.version)} · pending</h3><p class="hint" style="margin:0">${esc(c.note || "Filled when the job lands.")}</p></div>`;
+    const v = (k: string) => k === "train_tokens" ? (c[k] / 1e6).toFixed(2) + "M" : k === "minutes" ? c[k] + " min" : k === "dataset_sha256" ? String(c[k]).slice(0, 12) + "…" : k === "train_turns" ? c[k].join("-") : c[k];
+    const dl = Object.keys(label).filter(k => c[k] != null).map(k => `<dt>${label[k]}</dt><dd>${esc(v(k))}</dd>`).join("");
+    return `<div class="tcard"><h3>LoRA ${esc(c.version)} · r${c.rank} / α${c.alpha} · ${c.epochs} epoch${c.epochs > 1 ? "s" : ""}</h3><dl>${dl}</dl></div>`;
+  }).join("") + (older.length ? `<p class="hint" style="margin:0">${esc(older.join(" · "))}</p>` : "") || `<p class="hint">No training cards (data/v02/_eval/training-cards.json).</p>`;
+}
+
+function renderSpend() {
+  const s = data.spend;
+  $("kpi-paid").textContent = usd(s.paid_total_usd);
+  const paid = s.runs.filter((r: any) => r.billing === "per token");
+  const other = s.runs.filter((r: any) => r.billing !== "per token");
+  const hours = (m: any) => m.last > m.first ? (m.last - m.first) / 3600 : 0;
+  const modal = s.modal.length ? Math.max(...s.modal.map((m: any) => m.last)) - Math.min(...s.modal.map((m: any) => m.first)) : 0;
+  const rows = [
+    ...paid.map((r: any) => `<tr><td>${esc(r.label)}<span class="host">${esc(r.host)}</span></td><td class="r">${r.turns}</td><td class="r">${usd(r.usd)}</td><td class="r">${r.budget_usd != null ? usd(r.budget_usd) : "—"}</td></tr>`),
+    `<tr><td><strong>Paid total</strong><span class="host">ledgers, overlap counted once</span></td><td></td><td class="r"><strong>${usd(s.paid_total_usd)}</strong></td><td></td></tr>`,
+    ...other.map((r: any) => `<tr class="${/LoRA/.test(r.label) ? "ours" : ""}"><td>${esc(r.label)}<span class="host">${esc(r.host)}</span></td><td class="r">${r.turns}</td><td class="r">${r.billing.startsWith("list") ? usd(r.usd) : r.billing.startsWith("GPU") ? (hours(s.modal.find((m: any) => m.dataset === r.dataset) || {}) || 0).toFixed(1) + " h" : "USD 0"}</td><td class="r muted">${esc(r.billing)}</td></tr>`),
+  ];
+  $("spend-table").innerHTML = `<thead><tr><th>Run</th><th class="r">Turns</th><th class="r">Spend</th><th class="r">Cap / billing</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+  $("spend-note").innerHTML = `Paid inference is billed per token on Token Factory and OpenRouter; each call is counted once. Modal H100 bills by GPU-hour: the shared base + LoRA endpoint has served rollouts for ${(modal / 3600).toFixed(1)} h. Haiku runs on the Claude subscription (list-price equivalent, not spend). LoRA training charges are billed by Token Factory separately.`;
+}
+
+function render() {
+  renderHeadline(); renderLeaderboard(); renderTraining(); renderSpend();
+  const at = new Date(data.generated_at);
+  $("eval-status").textContent = "live"; $("eval-status").classList.add("live");
+  $("generated-at").textContent = `Updated ${at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Refresh pulls the latest run data.`;
+}
+
+async function load(fresh = false) {
+  const btn = $("refresh") as HTMLButtonElement; btn.disabled = true; btn.textContent = fresh ? "Refreshing…" : "Loading…";
+  try {
+    const [r, rr] = await Promise.all([fetch("/api/v02/eval-summary" + (fresh ? "?fresh=1" : ""), { cache: "no-store" }), fetch("/api/v02/runs", { cache: "no-store" }).catch(() => null)]);
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || "unavailable");
+    try { if (rr?.ok) runs = new Set((await rr.json()).runs.map((x: any) => x.name)); } catch (_) {}
+    data = d; $("eval-error").hidden = true; render();
+  } catch (e) { $("eval-error").hidden = false; $("eval-error").textContent = (e as Error).message; $("eval-status").textContent = "error"; }
+  finally { btn.disabled = false; btn.textContent = "Refresh"; }
+}
+$("window-tabs").addEventListener("click", e => {
+  const b = (e.target as HTMLElement).closest("button[data-w]") as HTMLElement | null; if (!b || !data) return;
+  win = b.dataset.w!;
+  renderLeaderboard();
+});
+$("refresh").addEventListener("click", () => load(true));
+load();
+</script>

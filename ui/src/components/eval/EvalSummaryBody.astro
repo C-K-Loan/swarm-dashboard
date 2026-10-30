@@ -1,0 +1,198 @@
+---
+// One-screen summary of the three evals (1920x1080, no scroll); numbers come from the same files as the detail tabs.
+import '../../styles/eval-v2.css';
+import fs from 'node:fs';
+import path from 'node:path';
+import { ROOT } from '../../lib/v02-store';
+const read = (f: string) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')); } catch { return null; } };
+const agr = read('data/v01b/gamejam-day1-haiku/agreement_report.json');
+const cards = (read('data/v02/_eval/training-cards.json') || []).filter((c: any) => c.state === 'done');
+// Stage 2: same mergers and levels as the Prose v2 tab (col-day left out there: a single node).
+const MERGERS = [{ dir: 'gamejam-day1-q235b', label: 'Qwen3-235B', color: '#ec4899' }, { dir: 'gamejam-day1', label: 'Qwen3-8B', color: '#5bb6ff' }, { dir: 'gamejam-day1-llama8b', label: 'Llama-3.1-8B', color: '#ffb86c' }];
+const LEVELS = ['row-4h', 'row-day', 'col-1h', 'col-4h'];
+const f1 = (dir: string) => { const v = LEVELS.map(l => agr?.levels?.[l]?.[dir]?.f1).filter(Number.isFinite); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : NaN; };
+const merge = MERGERS.map(m => ({ ...m, v: f1(m.dir) }));
+// Nemotron 3 Ultra merger (free route): shown only once agree_merge has scored it.
+const NEMO_DIR = 'gamejam-day1-nemotron-ultra', nemoF1 = f1(NEMO_DIR);
+const name = (id: string) => String(id || '').replace(/^claude-/, 'Claude ').replace(/-(\d)-(\d)-\d{8}$/, ' $1.$2').replace('haiku', 'Haiku').replace('sonnet', 'Sonnet');
+const bar = (label: string, v: number, color: string, max = 1, text?: string) => `<div class="sbar"><span class="sl" title="${label}">${label}</span><span class="st"><span style="width:${Number.isFinite(v) ? Math.min(100, 100 * v / max) : 0}%;background:${color}"></span></span><span class="sv" style="color:${color}">${text ?? (Number.isFinite(v) ? v.toFixed(2) : '—')}</span></div>`;
+---
+<main class="eval-page v2eval summary" id="eval-summary-screen">
+  <section class="hero">
+    <h1>CCT Summarizer · Eval summary <span class="status-pill" id="sum-status">loading</span></h1>
+    <p class="lede">Three summary formats, each fine-tuned or compared against its own reference. <span class="chip"><i style="background:#5bb6ff"></i> base</span> <span class="chip"><i style="background:#ec4899"></i> ours / best</span> <span class="chip"><i style="background:#f59e0b"></i> ours v2</span> <span class="chip"><i style="background:#a855f7"></i> reference</span></p>
+  </section>
+  <section class="heads" id="heads" aria-label="Headline numbers"></section>
+  <section class="cols">
+    <article class="card col">
+      <p class="stage">Stage 1 · Prose v1</p>
+      <h2>V0.1 per-message labels <span class="muted">— 5 fields per message</span></h2>
+      <div class="big ours" id="s1-big">—</div>
+      <p class="cap" id="s1-cap">per-field agreement with Claude Opus labels · Qwen3-30B-A3B</p>
+      <div class="chart" id="s1-chart"></div>
+      <p class="hint" id="s1-note"></p>
+    </article>
+    <article class="card col">
+      <p class="stage">Stage 2 · Prose v2</p>
+      <h2>V0.1.B hierarchical merge <span class="muted">— hourly bullets merged up</span></h2>
+      <div class="big ours">{Number.isFinite(merge[0].v) ? merge[0].v.toFixed(2) : '—'}</div>
+      <p class="cap">F1 vs {name(agr?.gt_model) || 'Haiku'} merges · {merge[0].label} merger</p>
+      <div class="chart" set:html={merge.map(m => bar(m.label, m.v, m.color)).join('') + (Number.isFinite(nemoF1) ? bar('Nemotron 3 Ultra 550B-A55B (untuned; also a LoRA teacher)', nemoF1, '#4ade80') : '') + bar('reference', 1, '#a855f7', 1, '1.00')} />
+      <p class="hint" id="s2-note">Lenient F1 (bullets in the Haiku merge or backed by their own sources), mean over {LEVELS.join(', ')}; judge {name(agr?.judge)} (same vendor as the reference). Same nodes for every merger.</p>
+    </article>
+    <article class="card col">
+      <p class="stage">State graph · v0.3 lean</p>
+      <h2>Qwen3-30B-A3B LoRA <span class="muted">· trained on Nebius TF, served on Modal H100 · 131 held-out turns</span></h2>
+      <div class="big v2" id="s3-big">—</div>
+      <p class="cap" id="s3-cap">touched-task agreement with Haiku labels · LoRA v2</p>
+      <div class="chart" id="s3-chart"></div>
+      <p class="hint" id="s3-note"></p>
+    </article>
+    <article class="card col scatter">
+      <p class="stage">Cost vs accuracy</p>
+      <h2>Stage 2 + state graph <span class="muted">— agreement with the frontier reference vs USD per 1k units (log)</span></h2>
+      <div id="scatter"></div>
+      <p class="hint" id="sc-note"></p>
+    </article>
+  </section>
+  <section class="card foot">
+    <div><p class="stage">Training</p><p id="f-train">{cards.length ? (([c]) => `LoRA ${c.version} on Nebius Token Factory: ~${c.minutes} min (${c.train_rows} rows, ${c.epochs} epoch${c.epochs > 1 ? 's' : ''})`)(cards.slice(-1)) + cards.slice(0, -1).map((c: any) => ` · ${c.version}: ${c.epochs} epoch${c.epochs > 1 ? 's' : ''}, superseded`).join('') : '—'}</p></div>
+    <div><p class="stage">Metered inference on record</p><p id="f-spend">—</p></div>
+    <div><p class="stage">Reference (Claude labels and merges)</p><p>Stage 1: Claude Opus 5.5 labels (1000 messages) · Stage 2: {name(agr?.gt_model) || 'Claude Haiku 4.5'} merges · State graph: <span id="f-gt3">Claude Haiku 4.5</span> labels</p></div>
+  </section>
+</main>
+<style is:global>
+  .v2eval.summary { gap: 10px; padding-top: 8px; padding-bottom: 8px; max-width: 1860px; --col-v2: #f59e0b; }
+  .v2eval.summary .hero h1 { font-size: 20px; }
+  .v2eval.summary .lede { font-size: 13px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .v2eval.summary .chip { display: inline-flex; gap: 5px; align-items: center; font-family: var(--mono); font-size: 11px; }
+  .v2eval.summary .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .v2eval.summary .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.55fr); gap: 10px; }
+  .v2eval.summary .heads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.55fr); gap: 10px; }
+  .v2eval.summary .head { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; }
+  .v2eval.summary .head.all { border-color: #a855f7; }
+  .v2eval.summary .head .hd-n { font: 700 clamp(12px, 1.05vw, 21px) var(--mono); letter-spacing: -.02em; color: #4ade80; line-height: 1.3; margin: 3px 0; white-space: nowrap; }
+  .v2eval.summary .head .hd-n i { font-style: normal; color: var(--muted); font-weight: 400; }
+  .v2eval.summary .head .hd-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v2eval.summary .head .hd-s { white-space: normal; line-height: 1.35; }
+  .v2eval.summary .head[title] { cursor: help; }
+  .v2eval.summary .head .hd-t { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #a855f7; }
+  .v2eval.summary .head .hd-s { color: var(--muted); font-size: 11.5px; }
+
+  .v2eval.summary #scatter svg { width: 100%; height: auto; display: block; }
+  .v2eval.summary .col { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; min-height: 0; }
+  .v2eval.summary .stage { margin: 0; font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #a855f7; }
+  .v2eval.summary .col h2 { margin: 0; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .v2eval.summary .big { font: 700 50px var(--mono); letter-spacing: -.03em; line-height: 1.05; margin-top: 8px; }
+  .v2eval.summary .big.ours { color: #ec4899; } .v2eval.summary .big.v2 { color: #f59e0b; }
+  .v2eval.summary .big.na { color: var(--muted); font-size: 30px; padding: 12px 0 6px; }
+  .v2eval.summary .head .hd-n.na { color: var(--muted); }
+  .v2eval.summary .head.flat .hd-n { color: var(--text); }  /* below its baseline: not a win colour */
+  .v2eval.summary .cap { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+  .v2eval.summary .sbar { display: grid; grid-template-columns: 112px 1fr 54px; gap: 8px; align-items: center; margin: 5px 0; font: 12px var(--mono); }
+  .v2eval.summary .sl { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v2eval.summary .st { height: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+  .v2eval.summary .st > span { display: block; height: 100%; }
+  .v2eval.summary .sv { text-align: right; font-weight: 600; }
+  .v2eval.summary .grp { margin: 8px 0 0; font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .v2eval.summary .col .hint { margin-top: auto; padding-top: 6px; font-size: 11.5px; }
+  .v2eval.summary .foot { display: grid; grid-template-columns: 1.2fr 1fr 1.3fr; gap: 20px; padding: 10px 16px; }
+  .v2eval.summary .foot p:not(.stage) { margin: 3px 0 0; font-size: 12.5px; color: var(--text); }
+  @media (max-width: 1100px) { .v2eval.summary .cols, .v2eval.summary .heads, .v2eval.summary .foot { grid-template-columns: 1fr; } }
+</style>
+<script>
+const $ = (id: string) => document.getElementById(id)!;
+const bar = (label: string, v: number, color: string, max = 1, text?: string) => `<div class="sbar"><span class="sl" title="${label}">${label}</span><span class="st"><span style="width:${Number.isFinite(v) ? Math.min(100, 100 * v / max) : 0}%;background:${color}"></span></span><span class="sv" style="color:${color}">${text ?? (Number.isFinite(v) ? v.toFixed(2) : '—')}</span></div>`;
+const pct = (v: number) => Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '—';
+const usd = (v: number) => 'USD ' + v.toFixed(2);
+(async () => {
+  const summ = await fetch('/api/v02/eval-summary', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+  // Stage 1: same Opus-gold scores as the Prose v1 tab table (eval-summary stage1.opus).
+  const o = summ?.cost_quality?.stage1?.opus, maj = o?.models?.find((m: any) => m.baseline), prod = o?.models?.find((m: any) => m.production);
+  const pick = (l: string) => o?.models?.find((m: any) => m.label === l);
+  if (o && prod) {
+    $('s1-big').textContent = pct(prod.mean_acc);
+    $('s1-cap').textContent = `${prod.label} vs Claude Opus labels · mean of 5 fields · majority baseline ${pct(maj?.mean_acc)}`;
+    const rows: [string, any, string][] = [['majority label', maj, '#8a8aa0'], [prod.label, prod, '#ec4899'], ['Qwen3-235B', pick('Qwen3-235B'), '#5bb6ff'], ['Gemma-3-27B', pick('Gemma-3-27B'), '#5bb6ff'], ['Nemotron 3 Ultra 550B-A55B (untuned; also a LoRA teacher)', o?.models?.find((m: any) => m.label.startsWith('Nemotron 3 Ultra')), '#4ade80'], ['Claude Haiku', pick('Claude Haiku'), '#a855f7']];
+    const s1t = (m: any) => pct(m?.mean_acc);  // models without complete data are not shown
+    $('s1-chart').innerHTML = `<p class="grp">Per-field agreement (mean of 5)</p>` + rows.filter(([, m]) => m).map(([n, m, c]) => bar(n, m.mean_acc, c, 1, s1t(m))).join('')
+      + `<p class="grp">Macro-F1 (mean of 5)</p>` + rows.filter(([, m]) => m === maj || m === prod || m?.claude).map(([n, m, c]) => bar(n, m?.mean_macro_f1, c)).join('');
+    const open = o.models.filter((m: any) => !m.baseline && !m.claude);
+    $('s1-note').textContent = `${o.n} messages labeled by ${o.reference}. ${open.filter((m: any) => m.mean_acc < maj.mean_acc).length} of ${open.length} open models score below always-predict-the-majority on agreement, above it on macro-F1. All 5 fields right: ${prod.label} ${pct(prod.all_fields)}, majority ${pct(maj.all_fields)}. Qwen3-14B LoRA not run on the Opus set. No cost on record.`;
+  }
+  // State graph: same scorer output as the v0.3 lean tab (eval-summary).
+  if (summ) {
+    const b = summ.val?.base, l = summ.val?.lora, l2 = summ.val?.lora2?.turns >= l?.turns ? summ.val.lora2 : null;
+    const last = l2 || l;
+    $('s3-big').textContent = pct(last?.touched_existing_f1);
+    $('s3-cap').textContent = `touched-task agreement with ${(last?.teachers?.[0] || 'Haiku').replace(/^claude-/, '').replace(/-(\d)-(\d)-\d{8}$/, ' $1.$2').replace('haiku', 'Haiku')} labels · LoRA ${l2 ? 'v2' : 'v1'}`;
+    // Base vs LoRA v2 only; v1 (superseded) stands in only while v2's val run is incomplete.
+    const nm = summ.val?.nemotron?.turns >= b?.turns ? summ.val.nemotron : null;
+    const arms = [['base', b, '#5bb6ff'], l2 ? ['LoRA v2', l2, '#f59e0b'] : ['LoRA v1', l, '#ec4899'], ['Nemotron 3 Ultra 550B-A55B (untuned; also a LoRA teacher)', nm, '#4ade80']].filter(([, a]) => a) as [string, any, string][];  // incomplete runs are not shown
+    const grp = (title: string, k: string, fmt: (v: number) => string, max = 1, ref?: [string, number]) => `<p class="grp">${title}</p>` + arms.map(([n, a, c]) => bar(n, a?.[k], c, max, fmt(a?.[k]))).join('') + (ref ? bar(ref[0], ref[1], '#a855f7', max, fmt(ref[1])) : '');
+    const relMax = Math.max(l?.teacher_rels_per_turn || 0, ...arms.map(([, a]) => a?.rels_per_turn || 0)) || 1;
+    $('s3-chart').innerHTML = grp('Touched-task F1', 'touched_existing_f1', pct) + grp('Valid output', 'valid_rate', pct) + grp('Relationships / turn', 'rels_per_turn', v => Number.isFinite(v) ? v.toFixed(2) : '—', relMax, ['Haiku labels', l?.teacher_rels_per_turn]);
+    const w = (ds: string) => summ.leaderboard?.find((r: any) => r.dataset === ds)?.windows?.evalslice;
+    const tb = w('qwen30b-bf16-base-lean-day1-modal'), tl = w('qwen30b-bf16-lora-r16-lean-day1-modal');  // same Modal endpoint for both arms
+    $('s3-note').textContent = `Turns where neither side touches a task score 100%; on the ${last?.teacher_touched_turns ?? '—'} turns where Haiku touched one: base ${pct(b?.touched_f1_teacher_touched)} → ${l2 ? 'v2' : 'v1'} ${pct(last?.touched_f1_teacher_touched)}. Held-out Day1 slice 1523-1902 (own rollout): rels/turn ${tb?.relationships_per_turn?.toFixed(2) ?? '—'} base (Modal) → ${tl?.relationships_per_turn?.toFixed(2) ?? '—'} LoRA v1 rollout (v2 rollout not run).`;
+
+    const cq = summ.cost_quality;
+    if (cq) {
+      const P = (v: number) => Number.isFinite(v) ? Math.round(v * 100) + '%' : '—';
+      const DEF = `Stage 1 agreement = share of messages where a field matches Claude Opus 5.5, averaged over 5 fields; majority baseline = always predicting the most common Opus value. Stage 2 / state graph agreement = touched-task F1 / merge F1 with the frontier reference; cheaper = 1 - our USD / frontier USD for the same work, list-price estimates (~); the LoRA actually ran on Modal GPU-hours. Overall = unweighted mean of the Stage 2 and state-graph savings. State graph (hypothetical token-price comparison): the LoRA is priced at the Token Factory Qwen3-30B-A3B base serving rate though it was served on Modal; Haiku's cost includes its harness prompt and retries; priced on the LoRA's own prompt tokens the saving is ~${P(cq.state.same_prompt_saving)}.`;
+      const tile = (cls: string, title: string, main: string, extra = '', na = false) => `<div class="head ${cls}" title="${DEF}"><div class="hd-t">${title}</div><div class="hd-n${na ? ' na' : ''}">${main}</div><div class="hd-s">${extra}</div></div>`;
+      const cheap = (h: any) => `${h.est ? '~' : ''}${P(h.cost_saving)} cheaper`;
+      const h2 = cq.stage2.headline, h3 = cq.state.headline;
+      const s1o = cq.stage1.opus?.models?.find((m: any) => m.production), s1maj = cq.stage1.opus?.models?.find((m: any) => m.baseline);
+      $('heads').innerHTML = (s1o ? tile(s1o.mean_acc < (s1maj?.mean_acc ?? 0) ? 'flat' : '', 'Stage 1 · Prose v1', `${pct(s1o.mean_acc)} per-field agreement`, `${s1o.label} vs Claude Opus labels (mean of 5 fields) · majority baseline ${pct(s1maj?.mean_acc)}`) : tile('', 'Stage 1 · Prose v1', 'not scored yet', '', true))
+        + tile('', 'Stage 2 · Prose v2', `${P(h2.quality)} F1 <i>·</i> ${cheap(h2)}`, `vs Haiku merges · Qwen3-235B · lenient F1, strict ${h2.strict_f1?.toFixed(2)}`)
+        + tile('', 'State graph · v0.3 lean', `${P(h3.quality)} agreement <i>·</i> ${cheap(h3)}`, `touched-task F1 vs Haiku · ${h3.ours} · rels ${P(cq.state.rels_ratio)} of Haiku's · hypothetical token price (LoRA at a TF base rate; served on Modal); same prompt ~${P(cq.state.same_prompt_saving)}`)
+        + tile('all', 'Overall · Stage 2 + state graph', `${cq.overall.est ? '~' : ''}${P(cq.overall.cost_saving)} cheaper`, 'unweighted mean of the two stage savings · list-price estimates · Stage 1 left out: below its majority baseline');
+      // Scatter: x = USD per 1k units (log), y = agreement with the stage's frontier reference.
+      const ST = [['stage2', 'Stage 2 (per 1k nodes)', '#a3e635'], ['state', 'State graph (per 1k turns)', '#fb7185']] as [string, string, string][];  // Stage 1 has no frontier reference
+      const pts = ST.flatMap(([k, , c]) => cq[k].points.filter((p: any) => p.usd > 0).map((p: any) => ({ ...p, k, c })));
+      const W = 760, H = 470, M = { l: 46, r: 14, t: 12, b: 64 }, cw = W - M.l - M.r, ch = H - M.t - M.b;
+      const lo = Math.floor(Math.log10(Math.min(...pts.map((p: any) => p.usd)))), hi = Math.ceil(Math.log10(Math.max(...pts.map((p: any) => p.usd))));
+      const X = (u: number) => M.l + cw * (Math.log10(u) - lo) / (hi - lo), Y = (q: number) => M.t + ch * (1 - q);
+      let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost versus accuracy">`;
+      for (let q = 0; q <= 1.001; q += 0.25) g += `<line x1="${M.l}" x2="${W - M.r}" y1="${Y(q)}" y2="${Y(q)}" stroke="#2a2a3a" stroke-dasharray="2,3"/><text x="${M.l - 6}" y="${Y(q) + 3}" text-anchor="end" fill="#8a8aa0" font-size="10" font-family="monospace">${q * 100}%</text>`;
+      for (let e = lo; e <= hi; e++) g += `<line x1="${X(10 ** e)}" x2="${X(10 ** e)}" y1="${M.t}" y2="${M.t + ch}" stroke="#2a2a3a" stroke-dasharray="2,3"/><text x="${X(10 ** e)}" y="${M.t + ch + 14}" text-anchor="middle" fill="#8a8aa0" font-size="10" font-family="monospace">$${10 ** e >= 1 ? 10 ** e : (10 ** e).toFixed(-e)}</text>`;
+      g += `<text x="${M.l + cw / 2}" y="${M.t + ch + 30}" text-anchor="middle" fill="#8a8aa0" font-size="10" font-family="monospace">USD per 1k units (log)</text>`;
+      // Pareto front per stage: cheapest-first, keep points that raise agreement.
+      for (const [k, , c] of ST) {
+        let best = -1; const front = pts.filter((p: any) => p.k === k).sort((a: any, b: any) => a.usd - b.usd).filter((p: any) => p.q > best ? ((best = p.q), true) : false);
+        if (front.length > 1) g += `<polyline fill="none" stroke="${c}" stroke-opacity=".45" stroke-width="1.5" stroke-dasharray="4,3" points="${front.map((p: any) => X(p.usd) + ',' + Y(p.q)).join(' ')}"/>`;
+      }
+      const labels: any[] = [];
+      for (const p of pts) {
+        const r = p.ref ? 7 : p.ours ? 6 : 4, x = X(p.usd), y = Y(p.q);
+        g += p.ref ? `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="#a855f7" stroke-width="2.5"/><circle cx="${x}" cy="${y}" r="2.5" fill="${p.c}"/>` : `<circle cx="${x}" cy="${y}" r="${r}" fill="${p.c}" fill-opacity="${p.ours ? 1 : .55}" stroke="${p.ours ? '#fff' : 'none'}" stroke-width="1"/>`;
+        g += `<title>${p.label}: ${(p.q * 100).toFixed(1)}% · ${p.est ? '~' : ''}$${p.usd.toFixed(3)} per ${cq[p.k].unit} (${p.note})</title>`;
+        if (p.ref || p.ours || p.nemo) labels.push({ x, y, p });
+      }
+      // Labels for ours + references, nudged down until they stop overlapping earlier ones.
+      const placed: { x0: number; x1: number; y: number }[] = [];
+      for (const { x, y, p } of labels.sort((a: any, b: any) => a.y - b.y)) {
+        // References sit on the 100% line: label them centered underneath; others to the side.
+        const text = p.label.replace(' (reference)', '').replace('Haiku 4.5 merges', 'Haiku merges').replace(/^Haiku 4\.5$/, 'Haiku labels').replace(/^Nemotron 3 Ultra.*/, 'Nemotron 3 Ultra (list price)'), w = text.length * 6.3;
+        const anchor = p.ref ? 'middle' : x > W - 190 ? 'end' : 'start', tx = p.ref ? x : anchor === 'end' ? x - 10 : x + 10;
+        const x0 = anchor === 'middle' ? tx - w / 2 : anchor === 'end' ? tx - w : tx, x1 = x0 + w;
+        const hit = (yy: number) => placed.some(b => x0 - 8 < b.x1 && x1 + 8 > b.x0 && Math.abs(b.y - yy) < 13);
+        let ly = p.ref ? y + 20 : y + 4;
+        if (p.ref && hit(ly)) ly = y + 34;  // second reference on the 100% line: one row lower
+        while (hit(ly)) ly += 13;
+        placed.push({ x0, x1, y: ly });
+        g += `<text x="${tx}" y="${ly}" text-anchor="${anchor}" fill="${p.ref ? '#c084fc' : p.c}" font-size="10.5" font-family="monospace">${text}</text>`;
+      }
+      g += ST.map(([, lab, c], i) => `<circle cx="${M.l + 8 + i * 190}" cy="${H - 12}" r="5" fill="${c}"/><text x="${M.l + 18 + i * 190}" y="${H - 8}" fill="#e8e8f0" font-size="10.5" font-family="monospace">${lab}</text>`).join('') + `<circle cx="${M.l + 8 + 2 * 190}" cy="${H - 12}" r="6" fill="none" stroke="#a855f7" stroke-width="2"/><text x="${M.l + 18 + 2 * 190}" y="${H - 8}" fill="#e8e8f0" font-size="10.5" font-family="monospace">frontier reference</text>`;
+      $('scatter').innerHTML = g + '</svg>';
+      const missing = ST.flatMap(([k]) => cq[k].points.filter((p: any) => !(p.usd > 0)).map((p: any) => p.label));
+      $('sc-note').textContent = `Dashed lines: cheapest-to-best front per stage. White ring = ours. Costs are list-price estimates (tokens x list rate; Haiku labels and merges at the plain input rate); the LoRA actually ran on Modal GPU-hours. ${missing.length ? 'No cost on record: ' + missing.join(', ') + '. ' : ''}Stage 1 is left out (no cost on record for the Opus set). Rollout-only runs have no agreement score yet. ${pts.some((p: any) => p.nemo) ? 'Nemotron 3 Ultra was run on a free NVIDIA trial; priced at its OpenRouter list rate (USD 0.60 / 2.40 per 1M tokens in / out). ' : ''}`;
+    }
+    $('f-gt3').textContent = (last?.teachers?.[0] || '').replace(/^claude-haiku-(\d)-(\d)-\d{8}$/, 'Claude Haiku $1.$2') || 'Claude Haiku 4.5';
+    const mt = cq?.metered || {}, roll = summ.spend?.paid_total_usd || 0, merges = (mt.merge_235b_est || 0) + (mt.merge_llama || 0);
+    $('f-spend').textContent = `~${usd(roll + (mt.v01_baselines || 0) + merges + (mt.judges_est || 0))}: rollouts ${usd(roll)} · V0.1 baselines ${usd(mt.v01_baselines || 0)} · merges ~${usd(merges)} (235B ~${usd(mt.merge_235b_est || 0)}, Llama ${usd(mt.merge_llama || 0)}) · judges ~${usd(mt.judges_est || 0)}. Not project cost: excludes ${(mt.unledgered || []).join(', ')}.`;
+  }
+  $('sum-status').textContent = 'live'; $('sum-status').classList.add('live');
+})();
+</script>

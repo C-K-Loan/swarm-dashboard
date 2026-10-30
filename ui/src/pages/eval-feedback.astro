@@ -1,0 +1,125 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const jobs = [
+  { label: "qwen14b_r16", model: "Qwen/Qwen3-14B", lora: "16 / 32", tokens: "6,335,979", dur: "15m 9s", id: "ftjob-c0dde67b4cf041838dddd48ca3d524be" },
+  { label: "qwen14b_r32", model: "Qwen/Qwen3-14B", lora: "32 / 64", tokens: "6,335,979", dur: "15m 22s", id: "ftjob-57cd5d4f7d304e279e6a95f04d565cec" },
+  { label: "qwen30b_r16", model: "Qwen/Qwen3-30B-A3B-Instruct-2507", lora: "16 / 32", tokens: "6,299,982", dur: "12m 0s", id: "ftjob-27493ae1a1c740f4abe08b1ef006d735" },
+];
+
+const baselines = [
+  { model: "Qwen3-30B-A3B-Instruct", ar: "5.3%", cost: "$0.08" },
+  { model: "Gemma-3-27B-IT", ar: "4.5%", cost: "$0.08" },
+  { model: "Qwen3-235B-A22B-Instruct", ar: "3.6%", cost: "$0.15" },
+  { model: "Nemotron-Nano-30B-A3B", ar: "1.5%", cost: "$0.09" },
+  { model: "DeepSeek-V4-Flash", ar: "—", cost: "$0.42" },
+];
+
+const curlExample = `curl -X POST https://api.tokenfactory.nebius.com/v1/chat/completions \\
+  -H "Authorization: Bearer $NEBIUS_TOKEN_FACTORY_KEY" \\
+  -d '{"model":"Qwen/Qwen3-14B:cct-fleet-v2-14b-r16", ...}'
+
+-> {"detail":"The model \`Qwen/Qwen3-14B:cct-fleet-v2-14b-r16\` does not exist."}`;
+---
+<Layout title="Nebius product feedback">
+  <main class="fb">
+    <header class="hero">
+      <div class="eyebrow">Berlin hackathon - 2026-10-18 - hand to a Nebius engineer</div>
+      <h1>Our Token Factory LoRA training worked.</h1>
+      <p class="sub">Serverless inference for the result is the gap.</p>
+    </header>
+
+    <section class="card">
+      <h2>What we did</h2>
+      <ul class="facts">
+        <li>Fine-tuned 3 Qwen LoRAs on 3,000 synthetic classifier SFT pairs via <code>POST /v1/fine_tuning/jobs</code>.</li>
+        <li>All 3 jobs returned <code>status=succeeded</code>, trained to completion, no errors.</li>
+        <li><strong>18.97M</strong> trained tokens, 102 steps each, 12-16 minutes wall-clock.</li>
+        <li>Weight downloads via <code>GET /v1/files/[id]/content</code> work (307 to presigned S3), with the auth header stripped on redirect.</li>
+      </ul>
+      <table class="jobs">
+        <thead><tr><th>label</th><th>base model</th><th>LoRA r/alpha</th><th class="r">trained tokens</th><th class="r">duration</th><th>ftjob id</th></tr></thead>
+        <tbody>
+          {jobs.map((j) => (
+            <tr>
+              <td class="lbl">{j.label}</td>
+              <td>{j.model}</td>
+              <td>{j.lora}</td>
+              <td class="r">{j.tokens}</td>
+              <td class="r">{j.dur}</td>
+              <td class="mono">{j.id}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Where we hit a wall</h2>
+      <p>Trained models do NOT auto-serve at <code>POST /v1/chat/completions</code>, so we cannot run the 1,000-row eval pass against our fine-tunes:</p>
+      <pre class="code">{curlExample}</pre>
+      <p><code>GET /v1/models</code> lists only base models (28), none of our fine-tunes. <code>/v1/deployments</code> returns 404. The <code>fine_tuned_model</code> field on the completed job response is <code>null</code>.</p>
+      <p>The docs page <code>dedicated-endpoints/custom-weights.md</code> says this path is "beta, by request".</p>
+    </section>
+
+    <section class="card">
+      <h2>What would unblock us (ranked)</h2>
+      <ol class="asks">
+        <li><strong>Serverless LoRA inference</strong> - route <code>POST /v1/chat/completions</code> with <code>model: [base]:[suffix]</code> to the trained adapter. Zero-ops, works on any base in the FT catalog.</li>
+        <li><strong>Self-serve dedicated endpoint</strong> - a <code>POST /v1/deployments</code> that takes a <code>ftjob</code> id and spins up a dedicated endpoint. Even if paid+manual, we can orchestrate it.</li>
+        <li><strong>Enable the custom-weights beta flag</strong> on our org - short-term unblock while (1) and (2) ship.</li>
+      </ol>
+    </section>
+
+    <section class="card why">
+      <h2>Why it matters for Nebius</h2>
+      <p>Our pipeline is a concrete case for a workflow that is only valuable end-to-end: <em>fine-tune a small model to replicate a bigger judge, then run it over 10k+ messages for a cost delta.</em> Train-only locks a user into a dead-end: you can't verify ROI without inference.</p>
+      <p>Current numbers on our 5 baseline Nebius models vs an Opus gold labeler (1000 msgs, structured classification):</p>
+      <table class="jobs">
+        <thead><tr><th>base model</th><th class="r">alignment (all 6 fields)</th><th class="r">cost / 1K msgs</th></tr></thead>
+        <tbody>
+          {baselines.map((b) => (
+            <tr>
+              <td>{b.model}</td>
+              <td class="r">{b.ar}</td>
+              <td class="r">{b.cost}</td>
+            </tr>
+          ))}
+          <tr class="pending">
+            <td>Qwen3-14B - LoRA-SFT</td>
+            <td class="r">pending inference</td>
+            <td class="r">?</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted">We suspect the SFT closes most of the agent_role multi-label gap (jaccard 0.48 -> ?). Without inference we can't measure.</p>
+    </section>
+
+    <section class="card contact">
+      <h2>Contact</h2>
+      <p>CKL - nebius-hack - <code>[REDACTED_EMAIL]</code></p>
+      <p class="muted">All ftjob ids above are real; happy to walk through the training spans on our Nebius console.</p>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  main.fb { max-width: 980px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 20px; }
+  main.fb .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+  main.fb h1 { font-size: 28px; font-weight: 600; line-height: 1.25; margin: 0; }
+  main.fb .sub { color: var(--muted); font-size: 16px; margin: 6px 0 0; }
+  main.fb .card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 18px 22px; }
+  main.fb .card h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text); }
+  main.fb ul.facts, main.fb ol.asks { margin: 0; padding-left: 20px; line-height: 1.75; }
+  main.fb table.jobs { width: 100%; font-size: 11.5px; font-family: var(--mono); border-collapse: collapse; margin-top: 12px; }
+  main.fb table.jobs th { font-weight: 500; text-align: left; color: var(--muted); padding: 6px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+  main.fb table.jobs td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); }
+  main.fb table.jobs td.lbl { font-weight: 500; color: #f1a26b; }
+  main.fb table.jobs td.r, main.fb table.jobs th.r { text-align: right; }
+  main.fb td.mono, main.fb .mono { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+  main.fb tr.pending td { color: #f1a26b; }
+  main.fb code { background: var(--panel-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px; font-size: 11.5px; font-family: var(--mono); color: var(--text); }
+  main.fb pre.code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; font-size: 11px; font-family: var(--mono); overflow-x: auto; color: var(--text); white-space: pre-wrap; }
+  main.fb .why em { color: #7ed07e; font-style: normal; }
+  main.fb a { color: #f1a26b; }
+</style>

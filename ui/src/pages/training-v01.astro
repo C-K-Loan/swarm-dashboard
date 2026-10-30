@@ -1,0 +1,329 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Training · swarm-board">
+  <script is:inline src="https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js"></script>
+  <main class="training-page">
+    <section class="hero">
+      <h1>Training <span class="sub" id="train-sub">loading…</span></h1>
+    </section>
+
+    <section class="tcard">
+      <h2>SFT datasets <span class="tmuted">— class distribution per field (log scale)</span></h2>
+      <div class="sft-controls">
+        <label>dataset <select id="sft-dataset-sel"></select></label>
+        <label>split <select id="sft-split-sel"></select></label>
+        <span id="sft-dataset-meta" class="sft-meta"></span>
+      </div>
+      <div id="sft-plot" class="sft-panels"></div>
+    </section>
+
+    <section class="tcard">
+      <h2>Candidate datasets <span class="tmuted">— fleet × judge pairs ranked by SFT-readiness (rows big, degen fields few)</span></h2>
+      <div id="candidate-datasets"></div>
+    </section>
+
+    <section class="tcard">
+      <h2>Classified corpora <span class="tmuted">— one row per fleet, labelled-row counts per judge, worst-case degen-fields</span></h2>
+      <div id="classified-matrix"></div>
+    </section>
+
+    <section class="tcard">
+      <h2>Adapters <span class="tmuted">— trained LoRA adapters on disk; train loss &lt;0.08 flags likely overfit, eval on <a href="/eval" style="color:var(--accent)">/eval</a></span></h2>
+      <table id="adapters-table" class="ttable"></table>
+    </section>
+
+    <p class="thint" style="margin-top:14px">Live eval numbers live on <a href="/eval" style="color:var(--accent)">/eval</a>.</p>
+  </main>
+
+  <style is:global>
+    .training-page { max-width: 1100px; margin: 0 auto; padding: 16px 24px 40px; color: var(--text); }
+    .training-page .hero h1 { font-size: 16px; margin: 0 0 14px; font-weight: 600; letter-spacing: -.01em; }
+    .training-page .hero h1 .sub { color: var(--muted); font-size: 11px; font-weight: 400; font-family: var(--mono); margin-left: 8px; }
+    .training-page .tcard { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
+    .training-page .tcard h2 { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+    .training-page .tcard .tmuted { color: var(--muted); font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+    .training-page .thint { font-size: 11px; color: var(--muted); margin: 10px 0 0; }
+    .training-page .ttable { width: auto; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+    .training-page .ttable th { text-align: left; color: var(--muted); font-weight: 500; padding: 5px 14px 5px 0; border-bottom: 1px solid var(--border); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+    .training-page .ttable td { padding: 6px 14px 6px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .training-page .ttable tr:last-child td { border-bottom: 0; }
+    .training-page .ttable td:last-child, .training-page .ttable th:last-child { padding-right: 0; }
+    .training-page .tpill { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; background: var(--panel-2); color: var(--muted); font-family: var(--mono); }
+    .training-page .tpill.warn { background: #3a2d0b; color: #ffd166; }
+    .training-page .tpill.ok { background: #0f3524; color: #4ade80; }
+    .training-page .tmatrix { display: grid; grid-template-columns: 160px repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; max-width: 820px; }
+    .training-page .tmatrix > div { background: var(--panel); padding: 6px 10px; }
+    .training-page .tmatrix .mh { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+    .training-page .tmatrix .mc { font-variant-numeric: tabular-nums; }
+    .training-page .mhead { font-size: 10px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    .training-page .deg-warn { color: #f87171; font-weight: 500; }
+
+    .training-page .ttable td.dcell { padding: 6px 12px 6px 0; vertical-align: top; min-width: 150px; }
+    .training-page .ttable td.fname { font-family: var(--mono); font-size: 11px; }
+    .training-page .dbar { display: flex; width: 100%; height: 6px; border-radius: 3px; overflow: hidden; background: var(--panel-2); margin-bottom: 5px; }
+    .training-page .dbar .dseg { height: 100%; display: inline-block; }
+    .training-page .dlbl { font-size: 10px; font-family: var(--mono); color: var(--text); line-height: 1.4; white-space: nowrap; }
+    .training-page .dlbl .dpct { font-variant-numeric: tabular-nums; display: inline-block; min-width: 36px; color: var(--muted); }
+    .training-page .dlbl.deg-warn .dpct { color: #f87171; }
+    .training-page .dlbl.deg-warn .dcls { color: #f87171; font-weight: 500; }
+    .training-page .dmore { font-size: 9px; color: var(--muted); font-style: italic; margin-top: 2px; }
+
+    .training-page .sft-controls { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .training-page .sft-controls label { display: inline-flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .training-page .sft-controls select { background: var(--panel-2, #0d0d14); color: var(--text); border: 1px solid var(--border); border-radius: 3px; padding: 3px 8px; font-size: 11px; font-family: var(--mono); cursor: pointer; }
+    .training-page .sft-controls select:focus { outline: none; border-color: #5bb6ff; }
+    .training-page .sft-meta { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+    .training-page .sft-empty { color: var(--muted); font-family: var(--mono); font-size: 11px; padding: 20px; text-align: center; }
+    .training-page .sft-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .training-page .sft-panel { background: var(--panel-2, #0d0d14); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px 10px; }
+    .training-page .sft-panel.degen { border-color: #7a2a2a; }
+    .training-page .sft-panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .training-page .sft-panel-title { font-family: var(--mono); font-size: 11px; color: var(--text); font-weight: 500; letter-spacing: .02em; }
+    .training-page .sft-panel-sub { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+    .training-page .sft-deg-badge { color: #f87171; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .training-page .sft-bars { display: flex; flex-direction: column; gap: 3px; }
+    .training-page .sft-bar-item { display: grid; grid-template-columns: 110px 1fr 48px; gap: 8px; align-items: center; font-family: var(--mono); font-size: 10px; cursor: default; padding: 1px 2px; border-radius: 2px; }
+    .training-page .sft-bar-item:hover { background: #16161f; }
+    .training-page .sft-bar-label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .training-page .sft-bar-wrap { height: 10px; background: #0a0a12; border-radius: 2px; overflow: hidden; position: relative; }
+    .training-page .sft-bar-fill { height: 100%; border-radius: 2px; min-width: 1px; transition: width .25s ease; }
+    .training-page .sft-bar-val { font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+    .training-page .sft-bar-item:hover .sft-bar-val { color: var(--text); }
+    .training-page .sft-ax { position: relative; height: 14px; margin-left: 118px; margin-right: 56px; border-top: 1px solid var(--border); margin-top: 6px; }
+    .training-page .sft-ax-tick { position: absolute; top: 2px; transform: translateX(-50%); font-family: var(--mono); font-size: 9px; color: var(--muted); }
+    .training-page .sft-ax-label { text-align: center; font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 14px; letter-spacing: .03em; }
+
+    .training-page .cand-head, .training-page .cand-row { display: grid; grid-template-columns: 160px 140px 70px 50px 1fr 70px 70px; gap: 10px; align-items: center; padding: 6px 10px; font-family: var(--mono); font-size: 11px; }
+    .training-page .cand-head { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .training-page .cand-row:hover { background: var(--panel-2, #0d0d14); }
+    .training-page .cand-rows, .training-page .cand-score { text-align: right; font-variant-numeric: tabular-nums; }
+    .training-page .cand-degen { text-align: center; }
+    .training-page .cand-bar-track { height: 8px; background: #0a0a12; border-radius: 2px; overflow: hidden; }
+    .training-page .cand-bar-fill { height: 100%; border-radius: 2px; }
+    .training-page .cand-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; background: var(--panel-2, #0d0d14); color: var(--muted); border: 1px solid var(--border); text-align: center; }
+    .training-page .cand-tag.trained { background: #0f3524; color: #4ade80; border-color: #0f3524; }
+
+    .training-page .corp-head, .training-page .corp-row { display: grid; grid-template-columns: 180px repeat(2, 1fr) 80px; gap: 1px; background: var(--border); }
+    .training-page .corp-head > div, .training-page .corp-row > div { background: var(--panel); padding: 6px 10px; font-family: var(--mono); font-size: 11px; }
+    .training-page .corp-head > div { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .training-page .corp-fleet { color: var(--text); }
+    .training-page .corp-cell { font-variant-numeric: tabular-nums; text-align: right; color: var(--text); }
+    .training-page .corp-cell.empty { color: var(--muted); }
+    .training-page .corp-cell.corp-ok { color: #4ade80; }
+    .training-page .corp-cell.corp-warn { color: #facc15; }
+    .training-page .corp-cell.corp-bad { color: #f87171; font-weight: 500; }
+  </style>
+
+  <script is:inline>
+    (async () => {
+      const r = await fetch("/data/training_summary.json?cb=" + Date.now());
+      if (!r.ok) { document.getElementById("train-sub").textContent = "failed to load"; return; }
+      const d = await r.json();
+
+      document.getElementById("train-sub").textContent =
+        `${d.adapters.length} adapters · ${Object.keys(d.sft_data).length} datasets · generated ${d.generated_at}`;
+
+      // Adapters — compact: label | base | tokens | ckpt | train loss | status
+      {
+        const t = document.getElementById("adapters-table");
+        const rows = [
+          "<tr><th>label</th><th>base</th><th>train tokens</th><th>ckpt MB</th><th>train loss</th><th>status</th></tr>"
+        ];
+        for (const a of d.adapters) {
+          const loss = a.best_train_loss != null ? a.best_train_loss.toFixed(4) : "—";
+          const degWarn = loss !== "—" && +loss < 0.08 ? ' <span class="tpill warn">overfit?</span>' : "";
+          rows.push(
+            `<tr><td>${a.label}</td><td>${a.base_model}</td>` +
+            `<td style="text-align:right">${(a.trained_tokens/1e6).toFixed(2)}M</td>` +
+            `<td style="text-align:right">${(a.ckpt_bytes/1024/1024).toFixed(0)}</td>` +
+            `<td style="text-align:right">${loss}${degWarn}</td>` +
+            `<td><span class="tpill ok">${a.status}</span></td></tr>`
+          );
+        }
+        t.innerHTML = rows.join("");
+      }
+
+      // SFT datasets — paper-figure style: 5 small-multiple panels, one per field.
+      // Each panel: horizontal bars per label class; log x-axis so the tail stays visible.
+      // Dataset dropdown picks which training set (e.g. gamejam); split dropdown picks train/holdout/combined.
+      {
+        const el = document.getElementById("sft-plot");
+        const dsSel = document.getElementById("sft-dataset-sel");
+        const spSel = document.getElementById("sft-split-sel");
+        const meta = document.getElementById("sft-dataset-meta");
+        const FIELDS = ["user_intent","agent_intent","agent_role","blocker_type","urgency"];
+        const esc = (s) => String(s).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+        const LOG_TICKS = [0.1, 1, 10, 100];
+        const posPct = (p) => {
+          if (p <= 0.1) return 0;
+          if (p >= 100) return 100;
+          return (Math.log10(p) - Math.log10(0.1)) / (Math.log10(100) - Math.log10(0.1)) * 100;
+        };
+
+        // Group split files by inferred dataset name: `<name>_<split>.jsonl`
+        const groups = {};  // { gamejam: { train: fileEntry, holdout: fileEntry } }
+        for (const [fname, s] of Object.entries(d.sft_data)) {
+          const m = fname.match(/^(.+?)_(train|holdout|val|validation|test)\.jsonl$/i);
+          const name = m ? m[1] : fname.replace(/\.jsonl$/, "");
+          const split = m ? m[2].toLowerCase() : "all";
+          (groups[name] = groups[name] || {})[split] = { file: fname, data: s };
+        }
+        const datasetNames = Object.keys(groups).sort();
+
+        // Populate dataset dropdown
+        dsSel.innerHTML = datasetNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+
+        function populateSplitSel(dsName) {
+          const splits = Object.keys(groups[dsName] || {}).sort();
+          const opts = [];
+          if (splits.length > 1) opts.push(`<option value="__combined">combined (${splits.join("+")})</option>`);
+          splits.forEach(sp => opts.push(`<option value="${esc(sp)}">${esc(sp)}</option>`));
+          spSel.innerHTML = opts.join("");
+        }
+
+        function pickRows(dsName, splitKey) {
+          const g = groups[dsName];
+          if (!g) return { rows: [], totalRows: 0 };
+          if (splitKey === "__combined") return { rows: Object.values(g), totalRows: Object.values(g).reduce((a, x) => a + x.data.total_rows, 0) };
+          const only = g[splitKey];
+          return { rows: only ? [only] : [], totalRows: only ? only.data.total_rows : 0 };
+        }
+
+        function render() {
+          const dsName = dsSel.value;
+          const splitKey = spSel.value;
+          const { rows, totalRows } = pickRows(dsName, splitKey);
+          const splitLabel = splitKey === "__combined" ? "combined" : splitKey;
+          const fileLabel = rows.map(r => r.file).join(" + ");
+          meta.textContent = `${totalRows.toLocaleString()} rows · ${fileLabel || "(no files)"}`;
+
+          const panels = FIELDS.map(f => {
+            const totals = new Map();
+            let totalInField = 0;
+            for (const r of rows) {
+              const pf = r.data.per_field[f];
+              if (!pf) continue;
+              const rowsN = r.data.total_rows;
+              totalInField += rowsN;
+              for (const x of (pf.distribution || [])) {
+                const prev = totals.get(x.label) || { count: 0 };
+                prev.count += (x.count || Math.round(x.pct * rowsN / 100));
+                totals.set(x.label, prev);
+              }
+            }
+            for (const [k, v] of totals) v.pct = totalInField ? (v.count / totalInField * 100) : 0;
+            const dist = [...totals.entries()].map(([label, v]) => ({ label, ...v })).sort((a,b) => b.count - a.count);
+            const nClasses = dist.length;
+            const bars = dist.map((x, i) => {
+              const w = posPct(x.pct);
+              const isTop = i === 0;
+              const color = x.label === "None" ? "#4a4a5a" : (isTop ? "#5bb6ff" : "#9aa3b8");
+              return `<div class="sft-bar-item" title="${esc(x.label)} — ${x.pct.toFixed(x.pct < 1 ? 2 : 1)}% (${x.count.toLocaleString()} rows)">
+                <div class="sft-bar-label">${esc(x.label)}</div>
+                <div class="sft-bar-wrap"><div class="sft-bar-fill" style="width:${w}%;background:${color}"></div></div>
+                <div class="sft-bar-val">${x.pct.toFixed(x.pct < 1 ? 2 : (x.pct < 10 ? 1 : 0))}%</div>
+              </div>`;
+            }).join("");
+            const axisTicks = LOG_TICKS.map(t => `<div class="sft-ax-tick" style="left:${posPct(t)}%">${t}%</div>`).join("");
+            return `<div class="sft-panel">
+              <div class="sft-panel-head">
+                <div class="sft-panel-title">${f}</div>
+                <div class="sft-panel-sub">${nClasses} classes · ${totalInField.toLocaleString()} rows</div>
+              </div>
+              <div class="sft-bars">${bars}</div>
+              <div class="sft-ax">${axisTicks}</div>
+              <div class="sft-ax-label">share of rows (log)</div>
+            </div>`;
+          }).join("");
+          el.innerHTML = panels;
+        }
+
+        dsSel.addEventListener("change", () => { populateSplitSel(dsSel.value); render(); });
+        spSel.addEventListener("change", render);
+
+        if (datasetNames.length) {
+          dsSel.value = datasetNames[0];
+          populateSplitSel(datasetNames[0]);
+          render();
+        } else {
+          el.innerHTML = `<div class="sft-empty">no SFT datasets found</div>`;
+        }
+      }
+      // (old SFT table block below is now dead code but kept out of the live script)
+      if (false) {
+        const t = document.getElementById("sft-data-table");
+        const rows = [
+          "<tr><th>file</th><th>rows</th><th>user_intent</th><th>agent_intent</th><th>agent_role</th><th>blocker_type</th><th>urgency</th></tr>"
+        ];
+        for (const [name, s] of Object.entries(d.sft_data)) {
+          const SEG_COLORS = ["#5bb6ff", "#ec4899", "#ffb86c", "#5cff8c", "#b084f0", "#ffd166", "#ff5c6c", "#4ade80"];
+          const cells = ["user_intent","agent_intent","agent_role","blocker_type","urgency"].map(f => {
+            const pf = s.per_field[f];
+            if (!pf) return "<td>—</td>";
+            const dist = pf.distribution || [{label: pf.top_class, pct: pf.top_pct, count: 0}];
+            const tipLines = dist.map(d => `${d.pct}% ${d.label}${d.count ? ` (${d.count})` : ""}`).join("\n");
+            const segs = dist.map((d, i) => {
+              const color = d.label === "None" ? "#4a4a5a" : SEG_COLORS[i % SEG_COLORS.length];
+              return `<span class="dseg" style="width:${d.pct}%;background:${color}" title="${d.pct}% ${d.label}"></span>`;
+            }).join("");
+            const topLines = dist.slice(0, 3).map((d, i) => {
+              const degCls = (i === 0 && pf.degenerate) ? "deg-warn" : "";
+              return `<div class="dlbl ${degCls}"><span class="dpct">${d.pct}%</span> <span class="dcls">${d.label}</span></div>`;
+            }).join("");
+            const more = dist.length > 3 ? `<div class="dmore">+${dist.length - 3} more</div>` : "";
+            return `<td class="dcell"><div class="dbar" title="${tipLines}">${segs}</div>${topLines}${more}</td>`;
+          });
+          rows.push(`<tr><td class="fname">${name}</td><td style="text-align:right">${s.total_rows.toLocaleString()}</td>${cells.join("")}</tr>`);
+        }
+        t.innerHTML = rows.join("");
+      }
+
+      // Candidate datasets — rank every fleet x judge combo by SFT-readiness:
+      // score = rows * (5 - degen_fields) / 5. Mark whether an SFT dataset is already baked.
+      {
+        const trainedFleets = new Set(Object.keys(d.sft_data).map(n => n.split(/[_-]/)[0]));
+        const combos = [];
+        for (const judge of d.judges) {
+          const perFleet = d.classified[judge] || {};
+          for (const [fleet, row] of Object.entries(perFleet)) {
+            const deg = Object.values(row.per_field).filter(x => x.degenerate).length;
+            const usable = row.total_rows * (5 - deg) / 5;
+            combos.push({ fleet, judge, rows: row.total_rows, degen: deg, usable, trained: trainedFleets.has(fleet) });
+          }
+        }
+        combos.sort((a, b) => b.usable - a.usable);
+        const maxUsable = Math.max(1, ...combos.map(c => c.usable));
+        const el = document.getElementById("candidate-datasets");
+        const rows = combos.slice(0, 12).map(c => {
+          const w = Math.max(1, Math.round((c.usable / maxUsable) * 100));
+          const barColor = c.degen >= 4 ? "#f87171" : c.degen >= 3 ? "#facc15" : "#4ade80";
+          const tag = c.trained ? '<span class="cand-tag trained" title="already baked into an SFT dataset">trained</span>' : '<span class="cand-tag" title="candidate — no SFT dataset built yet">candidate</span>';
+          const degWarn = c.degen >= 3 ? "deg-warn" : "";
+          return `<div class="cand-row" title="${c.rows.toLocaleString()} rows, ${c.degen}/5 fields degenerate, usable score ${Math.round(c.usable).toLocaleString()}"><div class="cand-fleet">${c.fleet}</div><div class="cand-judge">${c.judge}</div><div class="cand-rows">${c.rows.toLocaleString()}</div><div class="cand-degen ${degWarn}">${c.degen}/5</div><div class="cand-bar-track"><div class="cand-bar-fill" style="width:${w}%;background:${barColor}"></div></div><div class="cand-score">${Math.round(c.usable).toLocaleString()}</div>${tag}</div>`;
+        }).join("");
+        el.innerHTML = `<div class="cand-head"><div>fleet</div><div>judge</div><div>rows</div><div>degen</div><div>usable (rows x non-degen share)</div><div>score</div><div></div></div>${rows}`;
+      }
+      // Classified matrix — one row per fleet, judges as columns.
+      {
+        const fleets = Array.from(new Set(d.judges.flatMap(j => Object.keys(d.classified[j] || {}))));
+        const el = document.getElementById("classified-matrix");
+        const head = `<div class="corp-head"><div>fleet</div>${d.judges.map(j => `<div>${j}</div>`).join("")}<div>worst degen</div></div>`;
+        const rows = fleets.map(f => {
+          const cells = d.judges.map(j => {
+            const r = (d.classified[j] || {})[f];
+            if (!r) return `<div class="corp-cell empty">—</div>`;
+            return `<div class="corp-cell" title="${r.total_rows.toLocaleString()} rows judged by ${j}">${r.total_rows.toLocaleString()}</div>`;
+          }).join("");
+          const degMax = Math.max(0, ...d.judges.map(j => {
+            const r = (d.classified[j] || {})[f];
+            return r ? Object.values(r.per_field).filter(x => x.degenerate).length : 0;
+          }));
+          const degCls = degMax >= 4 ? "corp-bad" : degMax >= 3 ? "corp-warn" : "corp-ok";
+          return `<div class="corp-row"><div class="corp-fleet">${f}</div>${cells}<div class="corp-cell ${degCls}" title="${degMax} of 5 fields are >95% one label">${degMax}/5</div></div>`;
+        }).join("");
+        el.innerHTML = head + rows;
+      }
+    })();
+  </script>
+</Layout>

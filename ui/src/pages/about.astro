@@ -1,0 +1,41 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="About · swarm-board">
+  <main class="about">
+    <section>
+      <h1>About</h1>
+      <p class="lede">
+        swarm-board V0.2: observability for a fleet of concurrent AI coding agents.
+        It turns the agents' prose messages into labels, merged summaries and a task state graph,
+        so an operator can see which agent needs attention and why.
+      </p>
+    </section>
+
+    <section>
+      <h2>Pipelines</h2>
+      <ul>
+        <li><strong>Stage 1 · Prose v1</strong>: per-message labels (intent, role, blocker, urgency) from a small open model.</li>
+        <li><strong>Stage 2 · Prose v2</strong>: hourly bullets merged up a time hierarchy (row/column levels).</li>
+        <li><strong>State graph · v0.3 lean</strong>: per-turn tasks and relationships; Qwen3-30B-A3B LoRA trained on Nebius Token Factory, served on Modal H100.</li>
+      </ul>
+      <p>Each stage is compared against its own reference: Claude Opus labels for Stage 1, Claude Haiku merges and labels for Stage 2 and the state graph.</p>
+    </section>
+
+    <section>
+      <h2>This demo</h2>
+      <p>The static demo shows one gamejam fleet, Day 1. Pages: <a href="/timeline">timeline</a>, <a href="/eval">eval</a> (summary and per-stage detail), <a href="/training">training</a>, <a href="/help">help</a>.</p>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .about { max-width: 900px; margin: 0 auto; padding: 20px 28px; }
+  .about h1 { font-size: 24px; font-weight: 700; margin: 20px 0 10px; }
+  .about h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .about p { color: var(--text); line-height: 1.6; }
+  .about p.lede { font-size: 16px; color: var(--muted); }
+  .about ul { color: var(--text); line-height: 1.8; }
+  .about a { color: var(--accent); text-decoration: none; }
+  .about a:hover { text-decoration: underline; }
+</style>

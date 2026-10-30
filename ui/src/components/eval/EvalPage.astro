@@ -1,0 +1,39 @@
+---
+// The /eval page for one summary schema; /eval?schema= (dev) and /eval/<schema>/ (static demo) both render it.
+import Layout from "../../layouts/Layout.astro";
+import EvalSummaryBody from "./EvalSummaryBody.astro";
+import EvalLeanBody from "./EvalLeanBody.astro";
+import EvalV01Body from "./EvalV01Body.astro";
+import EvalStage1Opus from "./EvalStage1Opus.astro";
+import EvalMergeBody from "./EvalMergeBody.astro";
+import "../../styles/eval-v2.css";
+const SCHEMAS = [
+  { key: "summary", label: "Summary · all three evals" },
+  { key: "lean", label: "v0.3 lean · state graph" },
+  { key: "prose-v1", label: "Prose v1 · V0.1 hourly bullets" },
+  { key: "prose-v2", label: "Prose v2 · V0.1.B hierarchical merge" },
+];
+const schema = SCHEMAS.find(s => s.key === Astro.props.schema)?.key ?? "summary";
+---
+<Layout title="V0.2 · Eval · swarm-board">
+  <div class="schema-bar" slot="header-controls">
+    <label for="eval-schema">Schema</label>
+    <select id="eval-schema" aria-label="Schema">{SCHEMAS.map(s => <option value={s.key} selected={s.key === schema}>{s.label}</option>)}</select>
+  </div>
+  {schema === "summary" && <EvalSummaryBody />}
+  {schema === "lean" && <EvalLeanBody />}
+  {schema === "prose-v1" && <><EvalStage1Opus /><EvalV01Body /></>}
+  {schema === "prose-v2" && <EvalMergeBody />}
+</Layout>
+<style is:global>
+  /* Schema picker lives in the site header row, pushed to its right end (eval page only). */
+  header .hdr-row:has(.schema-bar) { flex: 1 1 auto; }
+  .schema-bar { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .schema-bar select { font: 12px var(--mono); padding: 3px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; max-width: 260px; }
+  .v2eval select { font: 11px var(--mono); padding: 4px 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+</style>
+<script>
+const pick = document.getElementById("eval-schema") as HTMLSelectElement;
+// The static demo has one page per schema; the dev server keeps ?schema= in the URL.
+pick.addEventListener("change", () => { if ((window as any).__FROZEN__) { location.assign((window as any).__FROZEN__.base + "eval/" + (pick.value === "summary" ? "" : pick.value + "/")); return; } const u = new URL(location.href); u.searchParams.set("schema", pick.value); location.assign(u.toString()); });
+</script>

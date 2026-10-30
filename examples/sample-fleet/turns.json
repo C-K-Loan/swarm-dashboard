@@ -1,0 +1,97 @@
+[
+ {
+  "id": "turn-0001",
+  "ordinal": 0,
+  "session_id": "s-lead",
+  "actor_id": "human",
+  "actor_name": "you",
+  "kind": "human",
+  "start_ts": 1800000000.0,
+  "end_ts": 1800000000.0,
+  "boundary": "instantaneous_input",
+  "messages": [
+   {
+    "id": "m1-0",
+    "ts": 1800000000.0,
+    "role": "user",
+    "text": "Build a login page with email and password. Ship it tonight."
+   }
+  ]
+ },
+ {
+  "id": "turn-0002",
+  "ordinal": 1,
+  "session_id": "s-lead",
+  "actor_id": "actor:s-lead",
+  "actor_name": "demo-lead",
+  "kind": "agent",
+  "start_ts": 1800000005.0,
+  "end_ts": 1800000040.0,
+  "boundary": "provider_end_turn",
+  "messages": [
+   {
+    "id": "m2-0",
+    "ts": 1800000005.0,
+    "role": "assistant",
+    "text": "I will split this: demo-dev builds the login form and I review it. Tracking the login page as one task."
+   }
+  ]
+ },
+ {
+  "id": "turn-0003",
+  "ordinal": 2,
+  "session_id": "s-dev",
+  "actor_id": "actor:s-lead",
+  "actor_name": "demo-lead",
+  "kind": "a2a",
+  "start_ts": 1800000045.0,
+  "end_ts": 1800000045.0,
+  "boundary": "instantaneous_input",
+  "messages": [
+   {
+    "id": "m3-0",
+    "ts": 1800000045.0,
+    "role": "user",
+    "text": "[from demo-lead] Please build the login form for the login page, email and password fields."
+   }
+  ]
+ },
+ {
+  "id": "turn-0004",
+  "ordinal": 3,
+  "session_id": "s-dev",
+  "actor_id": "actor:s-dev",
+  "actor_name": "demo-dev",
+  "kind": "agent",
+  "start_ts": 1800000050.0,
+  "end_ts": 1800000600.0,
+  "boundary": "provider_end_turn",
+  "messages": [
+   {
+    "id": "m4-0",
+    "ts": 1800000050.0,
+    "role": "assistant",
+    "text": "The login form is built and its tests pass. Handing it back for review."
+   }
+  ]
+ },
+ {
+  "id": "turn-0005",
+  "ordinal": 4,
+  "session_id": "s-lead",
+  "actor_id": "actor:s-lead",
+  "actor_name": "demo-lead",
+  "kind": "agent",
+  "start_ts": 1800000620.0,
+  "end_ts": 1800000700.0,
+  "boundary": "provider_end_turn",
+  "messages": [
+   {
+    "id": "m5-0",
+    "ts": 1800000620.0,
+    "role": "assistant",
+    "text": "Reviewed the login form. It looks good, so I merged it and the login page is done."
+   }
+  ]
+ }
+]

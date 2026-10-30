@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" font-family="system-ui, sans-serif">
+  <defs>
+    <style><![CDATA[
+      .bg { fill: #0a0a0f; }
+      .text { fill: #e8e8f0; font-size: 14px; }
+      .label { fill: #e8e8f0; font-size: 13px; font-weight: 600; }
+      .sub { fill: #8a8aa0; font-size: 11px; font-family: "SF Mono", Menlo, Consolas, monospace; }
+      .accent { fill: #00e8c6; }
+      .warn { fill: #ffb86c; }
+      .err { fill: #ff5c6c; }
+      .panel { fill: #15151e; stroke: #2a2a3a; stroke-width: 1; }
+      .accent-panel { fill: #15151e; stroke: #00e8c6; stroke-width: 1.5; }
+      .flow-stroke { stroke: #8a8aa0; stroke-width: 1.5; fill: none; }
+      .flow-stroke-accent { stroke: #00e8c6; stroke-width: 1.5; fill: none; }
+      .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; }
+    ]]></style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a8aa0"/>
+    </marker>
+    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#00e8c6"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1200" height="500"/>
+
+  <text class="label" x="20" y="30">CCT Fleet Compressor · pipeline architecture</text>
+  <text class="sub" x="20" y="48">prose-only observability for concurrent AI coding agents · Path J</text>
+
+  <!-- Column 1: transcript sources -->
+  <rect class="panel" x="20" y="90" width="180" height="320" rx="6"/>
+  <text class="label" x="110" y="115" text-anchor="middle">transcript sources</text>
+  <text class="sub" x="30" y="140">~/.claude/projects/*</text>
+  <text class="sub" x="30" y="156">~/.codex/sessions/*</text>
+  <text class="sub" x="30" y="172">opencode SQLite</text>
+  <text class="sub" x="30" y="188">gemini chats</text>
+  <text class="sub" x="30" y="210">cct bus (agent2agent)</text>
+  <text class="sub" x="30" y="232" fill="#5cff8c">15+ live fleet agents</text>
+  <text class="sub" x="30" y="248" fill="#5cff8c">26K msgs across 4 projects</text>
+  <text class="sub" x="30" y="280">raw: ~29.5M tokens</text>
+  <text class="sub" x="30" y="296" fill="#00e8c6">prose-only: ~1.7M (3%)</text>
+  <text class="sub" x="30" y="324">metadata flags per turn:</text>
+  <text class="sub" x="30" y="340">· tool_call_count</text>
+  <text class="sub" x="30" y="356">· has_error</text>
+  <text class="sub" x="30" y="372">· has_file_edit</text>
+  <text class="sub" x="30" y="388">· is_subagent_report</text>
+
+  <!-- Arrow 1->2 -->
+  <path class="flow-stroke" d="M 200 250 L 280 250" marker-end="url(#arrow)"/>
+
+  <!-- Column 2: extractor -->
+  <rect class="panel" x="280" y="150" width="160" height="200" rx="6"/>
+  <text class="label" x="360" y="175" text-anchor="middle">prose extract</text>
+  <text class="sub" x="290" y="200">scripts/extract_prose.py</text>
+  <text class="sub" x="290" y="222">Claude: text blocks only</text>
+  <text class="sub" x="290" y="238">Codex: final_answer only</text>
+  <text class="sub" x="290" y="254">(commentary excluded)</text>
+  <text class="sub" x="290" y="278">canonical schema v0.1:</text>
+  <text class="sub" x="290" y="294">· role · model · ts</text>
+  <text class="sub" x="290" y="310">· text · 5 flags</text>
+  <text class="sub" x="290" y="332" fill="#00e8c6">OUT: data/prose/*.jsonl</text>
+
+  <!-- Arrow 2->3 -->
+  <path class="flow-stroke-accent" d="M 440 250 L 520 250" marker-end="url(#arrow-accent)"/>
+
+  <!-- Column 3: Nebius Token Factory -->
+  <rect class="accent-panel" x="520" y="100" width="220" height="300" rx="6"/>
+  <text class="label" x="630" y="125" text-anchor="middle" fill="#00e8c6">Nebius Token Factory</text>
+  <text class="sub" x="530" y="145" fill="#00e8c6">3-tier concurrent classifier</text>
+  <rect class="panel" x="530" y="160" width="200" height="60" rx="4"/>
+  <text class="sub" x="540" y="178" fill="#5cff8c">cheap  · Qwen3-30B-A3B</text>
+  <text class="sub" x="540" y="194">MoE 3B active · 0.10/0.30 USD/1M</text>
+  <text class="sub" x="540" y="210">21K msgs classified · 0.97 USD</text>
+  <rect class="panel" x="530" y="230" width="200" height="60" rx="4"/>
+  <text class="sub" x="540" y="248" fill="#ffb86c">mid    · Gemma-3-27B dense</text>
+  <text class="sub" x="540" y="264">27B · 0.10/0.30 USD/1M</text>
+  <text class="sub" x="540" y="280">200 msgs holdout · 0.01 USD</text>
+  <rect class="panel" x="530" y="300" width="200" height="60" rx="4"/>
+  <text class="sub" x="540" y="318" fill="#ff5c6c">nemotron · Nano 30B A3B</text>
+  <text class="sub" x="540" y="334">MoE · 0.06/0.24 USD/1M</text>
+  <text class="sub" x="540" y="350">Challenge entry · 0.01 USD</text>
+  <text class="sub" x="530" y="378">rubric schema v0.1 · 5 fields</text>
+
+  <!-- Arrow 3->4 -->
+  <path class="flow-stroke-accent" d="M 740 250 L 820 250" marker-end="url(#arrow-accent)"/>
+
+  <!-- Column 4: Reducer -->
+  <rect class="panel" x="820" y="150" width="160" height="200" rx="6"/>
+  <text class="label" x="900" y="175" text-anchor="middle">reducer</text>
+  <text class="sub" x="830" y="200">scripts/reduce_to_cards.py</text>
+  <text class="sub" x="830" y="222">session → card:</text>
+  <text class="sub" x="830" y="238">· task (role summary)</text>
+  <text class="sub" x="830" y="254">· progress (latest prose)</text>
+  <text class="sub" x="830" y="270">· blocker_type + text</text>
+  <text class="sub" x="830" y="286">· required_action</text>
+  <text class="sub" x="830" y="302">· urgency</text>
+  <text class="sub" x="830" y="318">· evidence spans</text>
+  <text class="sub" x="830" y="340" fill="#00e8c6">OUT: data/cards.json</text>
+
+  <!-- Arrow 4->5 -->
+  <path class="flow-stroke" d="M 980 250 L 1060 250" marker-end="url(#arrow)"/>
+
+  <!-- Column 5: Dashboard + MCP skill -->
+  <rect class="panel" x="1060" y="90" width="120" height="320" rx="6"/>
+  <text class="label" x="1120" y="115" text-anchor="middle">dashboard</text>
+  <text class="sub" x="1070" y="135">Astro + plain JS</text>
+  <text class="sub" x="1070" y="158" fill="#5cff8c">/t/cheap</text>
+  <text class="sub" x="1070" y="174" fill="#ffb86c">/t/mid</text>
+  <text class="sub" x="1070" y="190">/t/expensive</text>
+  <text class="sub" x="1070" y="215">cost ticker</text>
+  <text class="sub" x="1070" y="230">tier switcher</text>
+  <text class="sub" x="1070" y="245">group by project</text>
+  <text class="sub" x="1070" y="260">search filter</text>
+  <text class="sub" x="1070" y="275">evidence expand</text>
+  <text class="sub" x="1070" y="300" fill="#00e8c6">localhost:4321</text>
+  <text class="sub" x="1070" y="326">also shipped:</text>
+  <text class="sub" x="1070" y="342">· ghost skill</text>
+  <text class="sub" x="1070" y="358">· MCP wrapper</text>
+  <text class="sub" x="1070" y="374">· nebius template</text>
+  <text class="sub" x="1070" y="390">· Dockerfile</text>
+
+  <!-- Bottom bar: cost comparison -->
+  <rect class="panel" x="20" y="430" width="1160" height="60" rx="6"/>
+  <text class="label" x="40" y="452">compute cost · 21,187 real messages classified so far</text>
+  <text class="sub" x="40" y="476" fill="#00e8c6">ours (Nebius Qwen3-30B-A3B): $0.97</text>
+  <text class="sub" x="300" y="476" fill="#ffb86c">Haiku 3.5: $8.71 (9x)</text>
+  <text class="sub" x="500" y="476" fill="#ffb86c">GPT-4o-mini: $1.54 (1.6x)</text>
+  <text class="sub" x="730" y="476" fill="#ff5c6c">GPT-4o: $25.68 (27x)</text>
+  <text class="sub" x="940" y="476" fill="#ff5c6c">Sonnet 3.7: $32.66 (34x)</text>
+</svg>

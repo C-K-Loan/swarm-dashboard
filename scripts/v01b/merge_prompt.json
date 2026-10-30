@@ -1,0 +1,132 @@
+{
+ "system": "You merge bullet-point summaries of AI coding agents' work into a shorter summary.\nInput: child summaries in time order; every bullet has a number in [brackets].\nOutput JSON with fields started, finished, blocked, key_decisions; each an array of {\"t\": text, \"src\": [numbers]}.\nRules:\n- At most 6/6/4/4 bullets per field (started, finished, blocked, key_decisions).\n- MERGE, do not copy: group related bullets (same feature, file, bug or goal) into ONE higher-level bullet and cite ALL their numbers in src. Most output bullets should cite 2 or more numbers.\n- Write at the level of the whole time span: outcomes and goals, not individual steps.\n- If work started and later finished, keep it only under finished (cite both numbers).\n- Keep concrete names (features, files, commits, test counts) when they matter.\n- Never invent facts. Every bullet must be supported by its cited numbers; src may only use numbers from the input.\n- Each bullet at most 18 words. Drop trivial housekeeping when over the limit.\n- Empty array when a field has nothing.",
+ "schema": {
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+   "started",
+   "finished",
+   "blocked",
+   "key_decisions"
+  ],
+  "properties": {
+   "started": {
+    "type": "array",
+    "maxItems": 6,
+    "items": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "t",
+      "src"
+     ],
+     "properties": {
+      "t": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 200
+      },
+      "src": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   },
+   "finished": {
+    "type": "array",
+    "maxItems": 6,
+    "items": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "t",
+      "src"
+     ],
+     "properties": {
+      "t": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 200
+      },
+      "src": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   },
+   "blocked": {
+    "type": "array",
+    "maxItems": 4,
+    "items": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "t",
+      "src"
+     ],
+     "properties": {
+      "t": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 200
+      },
+      "src": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   },
+   "key_decisions": {
+    "type": "array",
+    "maxItems": 4,
+    "items": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "t",
+      "src"
+     ],
+     "properties": {
+      "t": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 200
+      },
+      "src": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "fields": [
+  "started",
+  "finished",
+  "blocked",
+  "key_decisions"
+ ],
+ "caps": {
+  "started": 6,
+  "finished": 6,
+  "blocked": 4,
+  "key_decisions": 4
+ },
+ "chunk": 8
+}

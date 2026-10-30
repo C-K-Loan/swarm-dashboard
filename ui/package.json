@@ -1,0 +1,24 @@
+{
+ "name": "cct-fleet-dashboard",
+ "version": "0.2.0",
+ "type": "module",
+ "scripts": {
+  "dev": "astro dev --host 127.0.0.1 --port 4322",
+  "start": "astro dev --host 127.0.0.1 --port 4322",
+  "build": "astro build",
+  "preview": "astro preview --host 127.0.0.1 --port 4322",
+  "test:unit": "node --test tests/*.test.mjs",
+  "test:e2e": "playwright test",
+  "test": "npm run test:unit && npm run test:e2e"
+ },
+ "dependencies": {
+  "astro": "^5.1.0",
+  "dompurify": "^3.4.17",
+  "highlight.js": "^11.12.0",
+  "marked": "^18.1.1",
+  "mime": "^4.1.1"
+ },
+ "devDependencies": {
+  "@playwright/test": "^1.48.0"
+ }
+}

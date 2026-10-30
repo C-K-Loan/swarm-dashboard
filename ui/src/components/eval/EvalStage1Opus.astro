@@ -1,0 +1,35 @@
+---
+// Stage 1 per-field scores vs the Claude Opus 5.5 gold set (eval-summary stage1.opus); sits above the V0.1 body on the prose-v1 tab.
+import '../../styles/eval-v2.css';
+---
+<section class="v2eval s1opus" id="s1-opus">
+  <article class="card">
+    <h2>Stage 1 vs Claude Opus labels <span class="muted" id="s1o-sub">loading…</span></h2>
+    <table class="eval-table" id="s1o-table"></table>
+    <p class="hint" id="s1o-note"></p>
+  </article>
+</section>
+<style is:global>
+  /* global: the table rows are built in the browser */
+  .s1opus { padding-bottom: 0; }
+  .s1opus tr.base td { color: var(--muted); }
+  .s1opus tr.claude td { color: #c084fc; }
+  .s1opus td.r i { color: var(--muted); font-style: normal; margin-left: 4px; font-size: 10px; }
+</style>
+<script>
+const FIELDS = ['user_intent', 'agent_intent', 'agent_role', 'blocker_type', 'urgency'];
+const pct = (v: number) => Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '—';
+(async () => {
+  const summ = await fetch('/api/v02/eval-summary', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const o = summ?.cost_quality?.stage1?.opus, t = document.getElementById('s1o-table')!;
+  if (!o) { document.getElementById('s1o-sub')!.textContent = '— no data'; return; }
+  document.getElementById('s1o-sub')!.textContent = `— ${o.n} messages (${o.n_agent} agent, ${o.n - o.n_agent} user) labeled by ${o.reference}; accuracy / macro-F1 per field`;
+  const head = `<tr><th>model</th>${FIELDS.map(f => `<th class="r">${f}</th>`).join('')}<th class="r">mean acc</th><th class="r">mean F1</th><th class="r">all fields</th></tr>`;
+  const cell = (f: any) => `<td class="r">${pct(f.acc)}<i>${f.macro_f1.toFixed(2)}</i></td>`;
+  const row = (m: any) => `<tr class="${m.baseline ? 'base' : m.production ? 'ours' : m.claude ? 'claude' : ''}"><td>${m.label}${m.production ? '<span class="host">production Stage 1</span>' : m.claude ? '<span class="host">frontier, for scale</span>' : ''}</td>${FIELDS.map(f => cell(m.fields[f])).join('')}<td class="r">${pct(m.mean_acc)}</td><td class="r">${m.mean_macro_f1.toFixed(2)}</td><td class="r">${pct(m.all_fields)}</td></tr>`;
+  t.innerHTML = head + o.models.map(row).join('') + o.not_run.map((l: string) => `<tr class="pending"><td>${l}</td><td colspan="8">${l.includes('LoRA') ? 'LoRA not run on the Opus set' : 'not run on the Opus set'}</td></tr>`).join('');
+  const maj = o.models.find((m: any) => m.baseline), open = o.models.filter((m: any) => !m.baseline && !m.claude);  // Nemotron Ultra counts as open once its rows land
+  const below = open.filter((m: any) => m.mean_acc < maj.mean_acc).length, above = open.filter((m: any) => m.mean_macro_f1 > maj.mean_macro_f1).length;
+  document.getElementById('s1o-note')!.textContent = `Majority label = always predict the most common Opus value per field (${FIELDS.map(f => f + ' ' + JSON.stringify(o.majority[f])).join(', ')}). ${below} of ${open.length} open models score below it on mean accuracy; ${above} of ${open.length} beat it on macro-F1. agent_intent, agent_role and blocker_type are scored on agent messages only; agent_role is exact set match, macro-F1 over roles. No cost on record for this set. The V0.1 sections below score a different set: 685 held-out messages against Qwen3-30B-A3B pseudo-labels.`;
+})();
+</script>

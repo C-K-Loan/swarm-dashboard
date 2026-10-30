@@ -1,0 +1,165 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="help · swarm-board">
+  <div class="help-page">
+    <header class="help-head">
+      <h1>Keybindings &amp; interactions</h1>
+      <p class="sub">All shortcuts active on the <a href="/timeline">timeline</a> page unless noted.</p>
+    </header>
+
+    <section class="help-grid">
+      <div class="help-card">
+        <h2>🖱️ Mouse</h2>
+        <dl>
+          <dt><kbd>Left-drag</kbd></dt>
+          <dd>Pan the track view (Photoshop hand tool). Works anywhere.</dd>
+          <dt><kbd>Middle-click + drag</kbd></dt>
+          <dd>Pan (alternative).</dd>
+          <dt><kbd>Shift + left-drag</kbd></dt>
+          <dd>Marquee multi-select. Cursor turns to crosshair.</dd>
+          <dt><kbd>Shift + drag over names</kbd></dt>
+          <dd>Select every non-idle cell for each agent row touched.</dd>
+          <dt><kbd>Click a cell</kbd></dt>
+          <dd>Open that bucket in Summary / Artifacts / Labels.</dd>
+          <dt><kbd>Click an agent name</kbd></dt>
+          <dd>Select the whole row for that one agent.</dd>
+          <dt><kbd>Shift + click agent name</kbd></dt>
+          <dd>Add that row to the current selection.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>🔍 Zoom</h2>
+        <dl>
+          <dt><kbd>Ctrl + wheel</kbd></dt>
+          <dd>Photoshop-style continuous zoom. Grain (turn / 15min / hour / 4h / day) stays locked — cells just stretch.</dd>
+          <dt><kbd>Plain mouse wheel</kbd></dt>
+          <dd>Normal page scroll — no longer zooms. Hold Ctrl to zoom.</dd>
+          <dt><kbd>Shift + wheel</kbd></dt>
+          <dd>Horizontal scroll (browser default).</dd>
+          <dt><kbd>+</kbd> / <kbd>-</kbd></dt>
+          <dd>Zoom in / out via keyboard.</dd>
+          <dt><kbd>0</kbd></dt>
+          <dd>Reset zoom to 1.0x.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>⌨️ Cell nav</h2>
+        <dl>
+          <dt><kbd>←</kbd> / <kbd>→</kbd></dt>
+          <dd>Move selection to the ADJACENT cell (including empty/idle cells, so you can scrub through quiet stretches).</dd>
+          <dt><kbd>Shift</kbd> + <kbd>←</kbd> / <kbd>→</kbd></dt>
+          <dd>Hop to the NEXT NON-IDLE cell (skip over empty gaps).</dd>
+          <dt><kbd>↑</kbd> / <kbd>↓</kbd></dt>
+          <dd>Move to adjacent agent row, same time column.</dd>
+          <dt><kbd>Shift</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></dt>
+          <dd>Hop to the next ROW whose cell at the current time column is ACTIVE (skip quiet rows).</dd>
+          <dt><kbd>Home</kbd> / <kbd>End</kbd></dt>
+          <dd>Jump to first / last cell in the current row.</dd>
+          <dt><kbd>PageUp</kbd> / <kbd>PageDown</kbd></dt>
+          <dd>Jump 10 cells left / right.</dd>
+          <dt><kbd>Esc</kbd></dt>
+          <dd>Clear selection.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>🧭 Column / row keyboard nav</h2>
+        <p class="hint" style="margin:4px 0 10px;color:#9ca3af;font-size:11px">After clicking a column header or an agent/fleet name:</p>
+        <dl>
+          <dt><kbd>←</kbd> / <kbd>→</kbd> <em>(after col click)</em></dt>
+          <dd>Iterate columns one-at-a-time, wrapping cyclically at the ends.</dd>
+          <dt><kbd>↑</kbd> / <kbd>↓</kbd> <em>(after row click)</em></dt>
+          <dd>Iterate agent rows one-at-a-time, wrapping cyclically. Auto-scrolls into view.</dd>
+          <dt><kbd>Home</kbd></dt>
+          <dd>Jump to first column / first row of the current axis.</dd>
+          <dt><kbd>End</kbd></dt>
+          <dd>Jump to last column / last row of the current axis.</dd>
+          <dt class="hint" style="color:#6b7280">(disabled while typing in text inputs)</dt>
+          <dd class="hint" style="color:#6b7280">Focus inside a filter/textarea blocks these shortcuts so you can type normally.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>🖼️ Layout</h2>
+        <dl>
+          <dt><kbd>edit layout</kbd> button</dt>
+          <dd>Enables drag/resize on every widget AND the vertical splitter between widgets and chart.</dd>
+          <dt><kbd>chart: bottom ↔ right</kbd> button</dt>
+          <dd>Toggle: agent timeline chart docks under the widgets (default) or as a right-side column. In right mode drag the vertical splitter to resize width (240px min, 75% viewport max). Persists per browser.</dd>
+          <dt><kbd>compact: off ↔ on</kbd> button</dt>
+          <dd>Collapse runs of ≥3 empty buckets to a narrow gap marker. Useful for long timelines with sparse activity.</dd>
+          <dt><kbd>reset layout</kbd> button</dt>
+          <dd>Restore widget grid defaults for the current profile.</dd>
+          <dt>profile select</dt>
+          <dd>Switch between saved widget-grid profiles (default / focus-mode / your custom).</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>🎛️ Toolbar</h2>
+        <dl>
+          <dt>bucket</dt>
+          <dd>turn / 15min / hour / 4h / day — time grain locked across zoom.</dd>
+          <dt>range</dt>
+          <dd>Filter by recent window (1h / 24h / 7d / all).</dd>
+          <dt>filter</dt>
+          <dd>Text match against agent title + project.</dd>
+          <dt>fleet dropdown</dt>
+          <dd>Scope to one fleet. ✓ = classified · ∅ = unclassified · 🔒 = privacy-locked.</dd>
+          <dt>sort</dt>
+          <dd>first activity / last activity / total messages / total cost / alphabetical / status-triage.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>📺 Live refresh</h2>
+        <dl>
+          <dt>🟢 pulse</dt>
+          <dd>Daemon running, last tick ok. UI auto-refetches every ~30s.</dd>
+          <dt>🟠 flash</dt>
+          <dd>New data landed — timeline redrew without losing your selection / zoom / scroll.</dd>
+          <dt>gray dot</dt>
+          <dd>Daemon stopped. See <a href="/settings">settings</a> → section 9.</dd>
+        </dl>
+      </div>
+
+      <div class="help-card">
+        <h2>🔗 Pages</h2>
+        <dl>
+          <dt><a href="/timeline">/timeline</a></dt>
+          <dd>Main fleet GUI — tracks, selection, panels.</dd>
+          <dt><a href="/t/fast">/t/fast</a></dt>
+          <dd>Card grid (one card per agent, tier switch).</dd>
+          <dt><a href="/about">/about</a></dt>
+          <dd>Architecture, cost pareto, agreement bars.</dd>
+          <dt><a href="/settings">/settings</a></dt>
+          <dd>Fleet index, remote hosts, live refresh config, cost ledger.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <footer class="help-foot">
+      <p>Report bugs → <code>cct send nebius-hack-dev "bug: &lt;what&gt;"</code></p>
+    </footer>
+  </div>
+</Layout>
+
+<style>
+  .help-page { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+  .help-head { margin-bottom: 20px; }
+  .help-head h1 { margin: 0 0 4px 0; font-size: 20px; font-weight: 700; }
+  .help-head .sub { color: var(--muted); font-size: 12px; margin: 0; }
+  .help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+  .help-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .help-card h2 { margin: 0 0 10px 0; font-size: 13px; font-weight: 600; font-family: var(--mono); color: var(--text); }
+  .help-card dl { margin: 0; display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 6px 14px; }
+  .help-card dt { font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .help-card dd { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .help-card kbd { display: inline-block; padding: 1px 6px; font-family: var(--mono); font-size: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 3px; color: var(--text); }
+  .help-foot { margin-top: 20px; color: var(--muted); font-size: 11px; }
+  .help-foot code { background: var(--panel-2); padding: 1px 6px; border-radius: 3px; font-family: var(--mono); }
+</style>

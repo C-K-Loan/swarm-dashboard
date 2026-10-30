@@ -1,0 +1,24 @@
+[
+ {
+  "id": "human",
+  "name": "you",
+  "kind": "human"
+ },
+ {
+  "id": "harness",
+  "name": "Session harness",
+  "kind": "system"
+ },
+ {
+  "id": "actor:s-lead",
+  "session_id": "s-lead",
+  "name": "demo-lead",
+  "kind": "agent"
+ },
+ {
+  "id": "actor:s-dev",
+  "session_id": "s-dev",
+  "name": "demo-dev",
+  "kind": "agent"
+ }
+]

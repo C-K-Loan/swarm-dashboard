@@ -1,0 +1,191 @@
+---
+export interface Props {
+  agent: {
+    title: string;
+    project: string;
+    fleet: string;
+    model: string;
+    account?: string;
+    host?: string;
+    state: "working" | "waiting" | "blocked" | "idle" | "done";
+    task: string;
+    progress: string;
+    blocker?: { type: string; detail?: string } | null;
+    required_action?: string | null;
+    urgency: "low" | "mid" | "high" | null;
+    last_update: string;
+    evidence_count: number;
+    evidence?: Array<{
+      ts?: number;
+      ts_human?: string;
+      labels?: Record<string, string | null>;
+      text?: string;
+      role?: string;
+    }>;
+  };
+}
+const { agent } = Astro.props;
+// Slugify title for unique IDs
+const slug = (agent.title || "x").replace(/[^a-zA-Z0-9]/g, "-");
+
+const stateColors: Record<string, string> = {
+  working: "var(--ok)",
+  waiting: "var(--warn)",
+  blocked: "var(--err)",
+  idle: "var(--muted)",
+  done: "var(--accent)",
+};
+const urgencyColors: Record<string, string> = {
+  low: "var(--muted)",
+  mid: "var(--warn)",
+  high: "var(--err)",
+};
+const stateColor = stateColors[agent.state] || "var(--muted)";
+const hasBlocker = agent.state === "blocked" || agent.blocker;
+---
+<article class={"card " + (hasBlocker ? "has-blocker" : "")}>
+  <div class="card-head">
+    <div class="title">
+      <span class="dot" style={`background:${stateColor}`}></span>
+      <strong>{agent.title}</strong>
+      {agent.account && <span class="tag account">{agent.account}</span>}
+    </div>
+    <div class="meta">
+      <span class="tag project">{agent.project}</span>
+      {agent.fleet && agent.fleet !== agent.project && <span class="tag fleet">fleet: {agent.fleet}</span>}
+      <span class="tag model">{agent.model}</span>
+    </div>
+  </div>
+
+  <div class="row task">
+    <span class="k">task</span>
+    <span class="v">{agent.task}</span>
+  </div>
+
+  <div class="row">
+    <span class="k">progress</span>
+    <span class="v">{agent.progress}</span>
+  </div>
+
+  {hasBlocker && (
+    <div class="row blocker">
+      <span class="k">⚠ blocker</span>
+      <span class="v">
+        <span class="chip">{agent.blocker?.type ?? "unknown"}</span>
+        {agent.blocker?.detail && <> {agent.blocker.detail}</>}
+      </span>
+    </div>
+  )}
+
+  {agent.required_action && (
+    <div class="row action">
+      <span class="k">needs</span>
+      <span class="v">
+        <strong>{agent.required_action}</strong>
+      </span>
+    </div>
+  )}
+
+  <div class="card-foot">
+    <span class="updated">updated {agent.last_update}</span>
+    {agent.urgency && (
+      <span class="urgency" style={`color:${urgencyColors[agent.urgency]}`}>urgency: {agent.urgency}</span>
+    )}
+    <label class="evidence-toggle">
+      <input type="checkbox" id={`ev-toggle-${slug}`} />
+      <span>evidence ({agent.evidence_count})</span>
+    </label>
+  </div>
+
+  {agent.evidence && agent.evidence.length > 0 && (
+    <section class={`evidence-list ev-${slug}`}>
+      {agent.evidence.map((e) => (
+        <div class="ev-row">
+          <div class="ev-meta">
+            <span class="ev-ts">{e.ts_human}</span>
+            {e.role && <span class="ev-role">{e.role}</span>}
+            {e.labels && Object.entries(e.labels).filter(([_, v]) => v).map(([k, v]) => (
+              <span class="ev-chip">{k.split("_")[0]}: {v}</span>
+            ))}
+          </div>
+          {e.text && <div class="ev-text">{e.text}</div>}
+        </div>
+      ))}
+    </section>
+  )}
+</article>
+
+<style>
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 120ms ease;
+  }
+  .card:hover { border-color: var(--muted); }
+  .card.has-blocker { border-color: var(--err); background: linear-gradient(180deg, rgba(255,92,108,0.04), transparent); }
+
+  .card-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 2px; }
+  .title { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .title strong { color: var(--text); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .tag.account { background: transparent; border-style: dashed; }
+  .tag.project { color: var(--accent); border-color: rgba(0,232,198,0.3); }
+
+  .row { display: flex; gap: 10px; font-size: 13px; align-items: flex-start; padding: 2px 0; }
+  .row .k { color: var(--muted); font-family: var(--mono); font-size: 11px; min-width: 60px; padding-top: 2px; }
+  .row .v { color: var(--text); flex: 1; }
+  .row.task .v { font-weight: 500; }
+  .row.blocker .v { color: var(--err); }
+  .row.action .v strong { color: var(--warn); font-weight: 600; }
+
+  .chip {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(255,92,108,0.15);
+    color: var(--err);
+    font-family: var(--mono);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .evidence-toggle { color: var(--accent); cursor: pointer; user-select: none; }
+  .evidence-toggle input { display: none; }
+  .evidence-toggle:hover span { text-decoration: underline; }
+  .evidence-list { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .card:has(input:checked) .evidence-list { display: block; }
+  .ev-row { padding: 8px 10px; background: var(--panel-2); border-radius: 4px; margin-bottom: 6px; font-size: 12px; }
+  .ev-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .ev-ts { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+  .ev-role { color: var(--muted); font-family: var(--mono); font-size: 10px; padding: 1px 5px; background: var(--panel); border-radius: 2px; }
+  .ev-chip { color: var(--accent); font-family: var(--mono); font-size: 10px; padding: 1px 5px; background: rgba(0,232,198,0.08); border-radius: 2px; }
+  .ev-text { color: var(--text); line-height: 1.4; font-size: 12px; margin-top: 2px; }
+</style>

@@ -1,0 +1,17 @@
+---
+import {availableDatasets,dataDir} from '../lib/v02-store';
+import path from 'node:path';
+const selected=path.basename(dataDir(Astro.url.searchParams.get('dataset')));
+const options=availableDatasets();
+---
+<div class="statusbar frozen-hide"><label for="v02-dataset">Prediction run</label><select id="v02-dataset" aria-label="Prediction run">{options.map(run=><option value={run.name} selected={run.name===selected}>{run.name} · {run.manifest.teacher_model} · {run.status.completed??0}/{run.status.total??0}</option>)}</select><small>Machine reference and human reviews remain separate.</small></div>
+<script>
+const picker=document.getElementById('v02-dataset') as HTMLSelectElement;
+document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach(link=>{const url=new URL(link.href);if(url.origin===location.origin&&['/review','/eval','/eval-review','/training'].includes(url.pathname)){url.searchParams.set('dataset',picker.value);link.href=url.toString();}});
+picker?.addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('dataset',picker.value);location.assign(url.toString());});
+</script>
+
+<style>
+  select { min-width: 0; max-width: 100%; flex: 0 1 38rem; width: 100%; }
+  small { overflow-wrap: anywhere; }
+</style>

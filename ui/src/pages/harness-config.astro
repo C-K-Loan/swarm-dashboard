@@ -1,0 +1,178 @@
+---
+import Layout from "../layouts/Layout.astro";
+import fs from "node:fs";
+import path from "node:path";
+
+function safeJson<T = any>(p: string): T | null {
+  try { return JSON.parse(fs.readFileSync(p, "utf-8")) as T; } catch { return null; }
+}
+
+const cfgPath = path.resolve("../public/data/harness_config.json");
+const cfg: any = safeJson(cfgPath) || {};
+const srcPath = "[REDACTED_PATH]";
+let mtime = "unknown";
+try {
+  const stat = fs.statSync(cfgPath);
+  mtime = new Date(stat.mtimeMs).toISOString().replace("T", " ").slice(0, 16);
+} catch {}
+
+const formations = cfg.formations || {};
+const projects = cfg.projects || {};
+const models = cfg.models || {};
+const loop = cfg.loop_defaults || {};
+const shot = cfg.screenshot || {};
+const comm = cfg.communication || {};
+const backlog = cfg.backlog_projects || {};
+---
+<Layout title="Nemotron harness · config">
+  <main class="wrap">
+    <header>
+      <h1>Nemotron harness · schemas &amp; prompts</h1>
+      <p class="hint">
+        Read-only snapshot of every prompt/schema shipped to the OpenRouter API across the 6 nemotron harness scripts.
+        Mirror of <code>{srcPath}</code> · last modified <strong>{mtime}</strong>.
+      </p>
+      <p class="hint">
+        To change behavior: edit the python scripts in <code>other-project/tools/*.py</code>, then
+        <code>cp tools/harness_config.json ui/public/data/</code> to refresh this view. The config will become the live source of truth in a future revision.
+      </p>
+    </header>
+
+    <section>
+      <h2>Models</h2>
+      <table>
+        <thead><tr><th>Key</th><th>OpenRouter id</th></tr></thead>
+        <tbody>
+          {Object.entries(models).map(([k, v]) => (
+            <tr><td><code>{k}</code></td><td><code>{String(v)}</code></td></tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Loop defaults</h2>
+      <pre class="kv">{JSON.stringify(loop, null, 2)}</pre>
+    </section>
+
+    <section>
+      <h2>Screenshot</h2>
+      <pre class="kv">{JSON.stringify(shot, null, 2)}</pre>
+    </section>
+
+    <section>
+      <h2>Project SPECs <small>(1 paragraph each — the only app-level instructions the models see)</small></h2>
+      <div class="specs">
+        {Object.entries(projects).map(([name, spec]) => (
+          <article>
+            <h3><code class="projtag">{name}</code></h3>
+            <blockquote>{String(spec)}</blockquote>
+          </article>
+        ))}
+      </div>
+      {Object.keys(backlog).length > 0 && (
+        <div class="backlog">
+          <h3>Backlog (future)</h3>
+          {Object.entries(backlog).map(([name, spec]) => (
+            <article class="backlog-item">
+              <h4><code class="projtag">{name}</code> <span class="chip">queued · best-fleet only</span></h4>
+              <blockquote>{String(spec)}</blockquote>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <section>
+      <h2>Formations · roles · prompts</h2>
+      <p class="hint">Each formation is one python harness file. Builder prompts have 2 variants: round-1 (no current file) and iteration (with current_html + defects).</p>
+      {Object.entries(formations).map(([fname, f]: [string, any]) => (
+        <article class="formation">
+          <header>
+            <h3>{fname.replace(/_/g, " ")}</h3>
+            <div class="formation-meta">
+              <span class="chip">slug: <code>{f.slug}</code></span>
+              <span class="chip">harness: <code>{f.harness}</code></span>
+              {f.defect_merge && <span class="chip">defect merge: {f.defect_merge}</span>}
+            </div>
+          </header>
+          {Object.entries(f.roles || {}).map(([rname, r]: [string, any]) => (
+            <section class="role">
+              <h4>{rname.replace(/_/g, " ")} <small>→ model: <code>{r.model}</code></small></h4>
+              {r.duties && (
+                <ul class="duties">
+                  {r.duties.map((d: string) => <li>{d}</li>)}
+                </ul>
+              )}
+              {r.system_prompt && (
+                <div class="prompt-block">
+                  <div class="prompt-label">system prompt</div>
+                  <pre>{r.system_prompt}</pre>
+                </div>
+              )}
+              {r.build_user_round1 && (
+                <div class="prompt-block">
+                  <div class="prompt-label">user prompt · round 1 (initial build)</div>
+                  <pre>{r.build_user_round1}</pre>
+                </div>
+              )}
+              {r.build_user_iter && (
+                <div class="prompt-block">
+                  <div class="prompt-label">user prompt · iteration (with defects)</div>
+                  <pre>{r.build_user_iter}</pre>
+                </div>
+              )}
+              {r.review_prompt && (
+                <div class="prompt-block">
+                  <div class="prompt-label">reviewer prompt (schema inline)</div>
+                  <pre>{r.review_prompt}</pre>
+                </div>
+              )}
+            </section>
+          ))}
+        </article>
+      ))}
+    </section>
+
+    <section>
+      <h2>Communication model</h2>
+      <p class="hint">{comm.note}</p>
+      <ol class="flow">
+        {(comm.flow || []).map((s: string) => <li>{s}</li>)}
+      </ol>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 80px; color: #e5e7eb; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 8px; color: #f9fafb; }
+  h2 { font-size: 15px; margin: 32px 0 10px; color: #a7f3d0; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 1px solid #1f2937; padding-bottom: 6px; }
+  h2 small { font-weight: normal; color: #6b7280; text-transform: none; letter-spacing: 0; margin-left: 8px; }
+  h3 { font-size: 14px; margin: 20px 0 6px; color: #d1d5db; }
+  h4 { font-size: 12px; margin: 16px 0 4px; color: #e5e7eb; font-weight: 600; }
+  h4 small { color: #6b7280; font-weight: normal; margin-left: 8px; }
+  .hint { color: #9ca3af; font-size: 12px; line-height: 1.6; margin: 4px 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; background: #111318; padding: 1px 5px; border-radius: 3px; color: #c9d6ee; }
+  .chip { display: inline-block; background: #1f2937; color: #9ca3af; font-size: 10px; padding: 2px 7px; border-radius: 3px; margin-right: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #1f2937; text-align: left; }
+  th { background: #111318; color: #9ca3af; font-weight: 600; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+  pre { background: #0f1115; color: #d1d5db; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; padding: 10px 12px; border-radius: 4px; border: 1px solid #1f2937; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  pre.kv { max-width: 700px; }
+  .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .specs article { background: #0f1115; border: 1px solid #1f2937; border-radius: 5px; padding: 12px 14px; }
+  .projtag { background: #1e2a3a; color: #93c5fd; font-size: 11px; }
+  blockquote { margin: 0; color: #c9d6ee; font-size: 12px; line-height: 1.6; }
+  .backlog { margin-top: 18px; padding-top: 14px; border-top: 1px dashed #1f2937; }
+  .backlog-item { background: #0f1115; border: 1px dashed #374151; border-radius: 5px; padding: 10px 14px; }
+  .formation { background: #0b0b0d; border: 1px solid #1f2937; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+  .formation > header { border-bottom: 1px solid #1f2937; padding-bottom: 8px; margin-bottom: 8px; }
+  .formation-meta { margin-top: 4px; }
+  .role { padding: 10px 0 2px; border-top: 1px dotted #1f2937; }
+  .role:first-of-type { border-top: 0; }
+  .duties { font-size: 11px; color: #9ca3af; margin: 4px 0 8px 20px; }
+  .prompt-block { margin: 8px 0; }
+  .prompt-label { font-size: 10px; color: #6b7280; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 3px; font-family: ui-sans-serif, system-ui; }
+  .flow { font-size: 12px; color: #c9d6ee; padding-left: 22px; line-height: 1.7; }
+</style>

@@ -1,0 +1,111 @@
+---
+import Layout from '../layouts/Layout.astro';
+import '../styles/v02.css';
+import V02DatasetPicker from '../components/V02DatasetPicker.astro';
+export const prerender=false;
+---
+<Layout title="V0.2 · Prediction review">
+  <main class="v02">
+    <header class="masthead">
+      <div><p class="eyebrow">CCT SUMMARIZER / V0.2 PROTOTYPE</p><h1>From conversations to tasks.</h1><p>Review Gamejam, one completed turn at a time.</p></div>
+      <nav class="links" aria-label="V0.2 navigation"><span class="badge live">LOCAL · PRIVATE</span><a href="#state-heading">Turn state ↓</a><a href="/eval">Evaluation</a><a href="/timeline?fleet=gamejam&amp;range=all&amp;bucket=3600">Timeline</a></nav>
+    </header>
+    <V02DatasetPicker />
+    <div class="statusbar" aria-live="polite">
+      <span><strong id="generated">—</strong> generated</span><span><strong id="reviewed">—</strong> reviewed</span><span><strong id="tasks">—</strong> tasks</span><span><strong id="quota">—</strong> quota used</span><span class="muted" id="window">Loading the frozen source window…</span>
+    </div>
+    <div class="toolbar"><input id="search" type="search" aria-label="Search turns" placeholder="Search source, actor, or task…"/><select id="actor" aria-label="Filter actor"><option value="">All actors</option></select><select id="review-filter" aria-label="Filter review status"><option value="">All review states</option><option value="unreviewed">Needs review</option><option value="approved">Approved</option><option value="corrected">Corrected</option><option value="rejected">Rejected</option><option value="pending">Awaiting generation</option></select><button id="refresh" type="button">Refresh</button></div>
+    <p id="load-error" role="alert" hidden></p>
+    <div class="workspace">
+      <aside class="panel"><div class="panel-head"><h2>Completed turns</h2><small id="turn-count">—</small></div><div id="turn-list" class="turn-list"><div class="skeleton" aria-label="Loading turns"></div></div></aside>
+      <section class="panel" aria-labelledby="detail-title">
+        <div class="panel-head"><div><h2 id="detail-title">Select a turn</h2><p class="muted mono" id="detail-meta"></p></div><span class="badge" id="detail-state">loading</span></div>
+        <div class="detail-grid"><section class="source-pane"><h3>Source prose</h3><small>All non-tool prose from this turn · evidence stays attached</small><div id="source"></div></section><section class="prediction-pane"><div style="display:flex;justify-content:space-between;align-items:center"><h3>Summary + labels</h3><button id="edit" type="button" disabled>Edit prediction</button></div><small>End-of-turn changes · omitted fields stay unchanged</small><div id="prediction" class="empty">The first predictions will appear here as the local labeler finishes.</div><div id="editor" hidden><p class="section-label">Correct task fields</p><div id="task-editor"></div><details><summary>Advanced: edit the full structured prediction</summary><label for="json-editor">Prediction JSON</label><textarea id="json-editor" class="code-editor" spellcheck="false"></textarea></details><label style="margin-top:12px" for="review-note">Review note (optional)</label><textarea id="review-note" placeholder="What should the model learn from this correction?"></textarea></div></section></div>
+        <div class="review-actions"><button id="previous" type="button" title="Previous turn (K)">← Previous</button><button id="next" type="button" title="Next turn (J)">Next →</button><button id="approve" type="button" class="primary" disabled>Approve</button><button id="save" type="button" hidden>Save correction</button><button id="reject" type="button" disabled>Reject</button><span class="notice" id="save-status" role="status"></span></div>
+      </section>
+    </div>
+    <section class="panel state-inspector" aria-labelledby="state-heading">
+      <div class="panel-head"><div><h2 id="state-heading">State at this turn</h2><p class="muted" id="state-turn-label"></p></div><span class="badge">Original prediction history</span></div>
+      <div class="state-columns">
+        <section class="state-column" aria-labelledby="overall-state-heading"><h2 id="overall-state-heading">1. Overall state after this turn</h2><p class="muted">All accumulated tasks, actors, decisions, and relationships through this turn. Human corrections are separate.</p><div id="overall-state" aria-live="polite"></div></section>
+        <section class="state-column" aria-labelledby="llm-state-heading"><h2 id="llm-state-heading">2. State presented to the LLM</h2><p class="muted">Recorded input before processing this turn: the selected prior state, recent changes, project brief, and current source.</p><div id="llm-state" aria-live="polite"></div></section>
+      </div>
+    </section>
+    <p class="footer-note"><span id="teacher">Teacher: loading…</span> Generated labels are drafts, not human ground truth. Approvals and corrections are saved separately from the original predictions. J / K moves between turns.</p>
+  </main>
+</Layout>
+<script>
+import { renderTurnState } from "../lib/v02-turn-state";
+let dataset:any=null, selected='', editing=false, draft:any=null, busy=false, editBaseRevision=0, selecting=false;
+let selectionRequest=0, loadRequest=0;
+const turnCache=new Map<string,any>();
+const generated=(t:any)=>t?.has_prediction??!!t?.prediction;
+const query=new URL(location.href).searchParams.get('dataset');
+const api=(route:string)=>route+((query||dataset?.dataset)?'?dataset='+encodeURIComponent(query||dataset.dataset):'');
+const $=(id:string)=>document.getElementById(id)!;
+const esc=(s:any)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const num=(n:any)=>Number.isFinite(n)?new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(n):'—';
+const clock=(n:number)=>new Date(n*1000).toISOString().slice(11,19)+' UTC';
+const current=()=>turnCache.get(selected)||dataset?.turns.find((t:any)=>t.id===selected);
+const review=(t:any)=>dataset?.reviews?.[t?.id];
+const state=(t:any)=>review(t)?.status||(generated(t)?'unreviewed':'pending');
+const actorName=(id:string)=>dataset?.actors.find((a:any)=>a.id===id)?.name||(review(current())?.correction||current()?.prediction)?.tasks?.find((t:any)=>t.ref===id)?.changes?.title||current()?.task_names?.[id]||id;
+function visible(){const text=($('search') as HTMLInputElement).value.toLowerCase(),actor=($('actor') as HTMLSelectElement).value,filter=($('review-filter') as HTMLSelectElement).value;return dataset?.turns.filter((t:any)=>(!actor||t.actor_id===actor)&&(!filter||state(t)===filter)&&(!text||JSON.stringify(t).toLowerCase().includes(text)))||[];}
+function renderList(){const turns=visible();$('turn-count').textContent=num(turns.length);$('turn-list').innerHTML=turns.length?turns.map((t:any)=>`<button class="turn" data-turn="${esc(t.id)}" aria-current="${t.id===selected}"><div class="turn-title"><span class="dot ${state(t)}"></span>${esc(t.actor_name)}</div><div class="turn-meta"><span class="mono">${t.id.replace('turn-','#')} · ${clock(t.end_ts).slice(0,8)}</span><span>${state(t)==='unreviewed'?'draft':state(t)}</span></div></button>`).join(''):'<p class="empty">No turns match these filters. Clear the search or choose another review state.</p>';}
+function evidence(items:any[]){return (items||[]).map(e=>`<div class="evidence"><button type="button" class="evidence-link" data-message="${esc(e.message_id)}" style="border:0;padding:0;min-height:24px;text-align:left;background:transparent;font-size:11px">“${esc(e.quote)}”</button></div>`).join('');}
+function renderPrediction(t:any){const p=review(t)?.correction||t.prediction;if(!p){$('prediction').innerHTML='<p class="empty">Awaiting generation within the quota budget. Review the available drafts now; the source turn is already frozen.</p>';return;}
+ const ap=p.actor_patch||{};const badges=Object.entries(ap).map(([k,v])=>`<span class="badge">${esc(k)} · ${esc(v??'cleared')}</span>`).join('');
+ $('prediction').innerHTML=`<div class="section-label">Actor at turn end</div>${badges||'<p class="muted">No actor-state changes.</p>'}${evidence(p.actor_evidence)}<div class="section-label">Tasks · ${p.tasks.length}</div>`+p.tasks.map((task:any,i:number)=>{const c=task.changes||{};const originalIndex=t.prediction.tasks.findIndex((x:any)=>x.ref===task.ref);const id=task.resolution==='existing'?task.ref:(t.resolved_prediction?.tasks?.[originalIndex]?.ref||task.ref);const previous=t.task_states?.[id]||{};return `<article class="entity"><div class="entity-header"><h3>${esc(c.title||previous.title||task.ref)}</h3><span class="badge">${esc(task.resolution)}</span></div>${c.summary!==undefined?`<p>${esc(c.summary??'Summary cleared')}</p>`:''}<div class="tags">${['status','importance','complexity'].filter(k=>k in c).map(k=>`<span class="badge">${k} · ${esc(c[k]??'unknown')}</span>`).join('')}</div>${c.blocker?`<p style="color:var(--v-warn)">Blocked: ${esc(c.blocker.reason)}</p><small>${c.blocker.need_human_help?'Needs human help · ':''}${c.blocker.waiting_on_actor?'Waiting on '+esc(actorName(c.blocker.waiting_on_actor)):''}</small>`:('blocker'in c?'<small class="muted">No active blocker</small>':'')}<details><summary class="mono">${esc(id)}</summary>${evidence(task.evidence)}</details></article>`;}).join('')+(p.tasks.length?'':'<p class="muted">No task changes in this turn.</p>')+`<div class="section-label">Key decisions · ${p.decisions.length}</div>`+p.decisions.map((d:any)=>`<article class="entity"><p>${esc(d.summary)}</p><div class="tags"><span class="badge">${esc(d.importance??'unrated')}</span><span class="badge">${esc(actorName(d.made_by_actor_id))}</span></div>${evidence(d.evidence)}</article>`).join('')+(p.decisions.length?'':'<p class="muted">No new decisions.</p>')+`<div class="section-label">Relationships · ${p.relationships.length}</div>`+p.relationships.map((r:any)=>`<article class="entity"><p>${esc(actorName(r.from_ref))} <strong>${esc(r.type.replaceAll('_',' '))}</strong> ${esc(actorName(r.to_ref))}</p>${r.task_ref?`<small>Task: ${esc(actorName(r.task_ref))}</small>`:''}${evidence(r.evidence)}</article>`).join('');
+}
+async function choose(id:string){
+ if(busy)return;
+ if(editing&&!confirm('Discard your unsaved correction?'))return;
+ const request=++selectionRequest;
+ selected=id;editing=false;draft=null;selecting=true;
+ $('editor').hidden=true;$('prediction').hidden=false;$('save').hidden=true;$('edit').textContent='Edit prediction';$('save-status').textContent='';
+ for(const button of ['edit','approve','reject'])($(button) as HTMLButtonElement).disabled=true;
+ $('detail-title').textContent='Loading turn…';$('detail-meta').textContent=id;$('detail-state').textContent='loading';
+ $('source').replaceChildren();$('prediction').textContent='Loading prediction…';
+ $('overall-state').replaceChildren();$('llm-state').replaceChildren();$('state-turn-label').textContent=id;
+ renderList();
+ const u=new URL(location.href);u.searchParams.set('turn',selected);history.replaceState(null,'',u);
+ try {
+  let t=turnCache.get(id);
+  if(!t){
+   const entry=dataset?.turns.find((t:any)=>t.id===id);if(!entry)return;
+   if(dataset.layout_version!==2)t=entry;
+   else {
+    const endpoint=new URL(api('/api/v02/dataset'),location.origin);endpoint.searchParams.set('turn',id);
+    const response=await fetch(endpoint,{cache:'no-store'});const result=await response.json();
+    if(!response.ok)throw new Error(result.error);t=result.turn;
+   }
+   if(request!==selectionRequest)return;
+   turnCache.set(id,t);
+   if(turnCache.size>8)turnCache.delete(turnCache.keys().next().value!);
+  }
+  if(request!==selectionRequest)return;
+  const rev=review(t);$('detail-title').textContent=t.actor_name;
+  const sa=t.sender_attribution||dataset?.turns?.find((x:any)=>x.id===t.id)?.sender_attribution;
+  $('detail-meta').textContent=`${t.id} · ${clock(t.start_ts)} → ${clock(t.end_ts)} · ${sa?`${sa.kind} from ${sa.actor_name} (recorded as ${sa.was_kind}; ${sa.why})`:t.kind}`;
+  $('detail-state').textContent=rev?`${rev.status} · revision ${rev.revision}`:(t.prediction?'machine draft':'awaiting generation');
+  $('source').innerHTML=t.messages.map((m:any)=>`<article class="message" id="source-${esc(m.id)}"><small class="mono">${clock(m.ts)} · ${esc(m.id.slice(0,12))}</small><pre>${esc(m.text)}</pre></article>`).join('');
+  renderPrediction(t);renderTurnState(t);
+  for(const button of ['edit','approve','reject'])($(button) as HTMLButtonElement).disabled=!t.prediction;
+  $('load-error').hidden=true;
+ }catch(error){if(request===selectionRequest){$('load-error').hidden=false;$('load-error').textContent=(error as Error).message+' Use Refresh to retry.';}}
+ finally{if(request===selectionRequest)selecting=false;}
+}
+function selectOptions(values:any[],value:any){return values.map(v=>`<option value="${v??''}" ${v===value?'selected':''}>${v??'unknown / cleared'}</option>`).join('');}
+function edit(){if(busy||selecting)return;editing=!editing;$('editor').hidden=!editing;$('prediction').hidden=editing;$('save').hidden=!editing;$('edit').textContent=editing?'Cancel edit':'Edit prediction';if(!editing)return;const t=current();editBaseRevision=review(t)?.revision||0;draft=structuredClone(review(t)?.correction||t.prediction);($('json-editor') as HTMLTextAreaElement).value=JSON.stringify(draft,null,2);($('review-note') as HTMLTextAreaElement).value=review(t)?.note||'';$('task-editor').innerHTML=draft.tasks.map((t:any,i:number)=>`<article class="entity"><h3>${esc(t.ref)}</h3><div class="edit-fields">${['title','summary'].filter(k=>k in t.changes).map(k=>`<label class="full">${k}<input data-task="${i}" data-field="${k}" value="${esc(t.changes[k]??'')}"/></label>`).join('')}${['status','importance','complexity'].filter(k=>k in t.changes).map(k=>`<label>${k}<select data-task="${i}" data-field="${k}">${selectOptions(k==='status'?[null,'not_started','progressing','waiting','testing','blocked','done','cancelled']:[null,'low','medium','high'],t.changes[k])}</select></label>`).join('')}</div></article>`).join('')||'<p class="muted">No task changes. Use the full structured prediction editor to add entities or correct actor labels.</p>';}
+async function save(status:string){if(busy||selecting||!current()?.prediction)return;const t=current();let correction=null;const baseRevision=editing?editBaseRevision:(review(t)?.revision||0);if(status==='approved'&&editing){$('save-status').textContent='Use Save correction to save your edits.';return;}if(status==='approved'&&review(t)?.correction){status='corrected';correction=review(t).correction;}try{if(status==='corrected'&&!correction)correction=JSON.parse(($('json-editor') as HTMLTextAreaElement).value);}catch{$('save-status').textContent='The JSON is invalid. Fix it before saving.';$('save-status').className='notice error';return;}busy=true;for(const id of ['approve','save','reject'])($(id) as HTMLButtonElement).disabled=true;$('save-status').textContent='Saving review…';try{const response=await fetch(api('/api/v02/review'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({turn_id:t.id,status,correction,note:($('review-note') as HTMLTextAreaElement).value,base_revision:baseRevision})});const result=await response.json();if(!response.ok)throw new Error(result.error);dataset.reviews[t.id]=result.review;editing=false;busy=false;await choose(t.id);$('save-status').textContent='Saved locally';$('save-status').className='notice success';}catch(e){$('save-status').textContent=(e as Error).message;$('save-status').className='notice error';}finally{busy=false;for(const id of ['approve','save','reject'])($(id) as HTMLButtonElement).disabled=false;}}
+async function load(){const request=++loadRequest;try{const response=await fetch(api('/api/v02/dataset'),{cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data.error);if(request!==loadRequest)return;const old=current();const wasReady=!!old?.prediction;const first=!dataset;dataset=data;for(const [id,t] of turnCache){if(!t.prediction&&generated(data.turns.find((v:any)=>v.id===id)))turnCache.delete(id);}$('teacher').textContent='Teacher: '+data.manifest.teacher_model+'.';$('generated').textContent=`${num(data.status.completed)} / ${num(data.status.total)}`;$('reviewed').textContent=num(Object.values(data.reviews).filter((r:any)=>['approved','corrected'].includes(r.status)).length);$('tasks').textContent=num(Object.keys(data.graph.tasks).length);$('quota').textContent=data.manifest.teacher_model?.includes('nemotron')?'Free endpoint · $0 only':data.quota.mode==='complete_frozen_day1'?`${num(data.quota.current_used_percent)}% account · Day 1 authorized`:`${num(data.quota.consumed_percentage_points)} / ${num(data.quota.budget_percentage_points??5)} pp`;$('window').textContent=(data.status.state==='awaiting_budget'?'Prepared · awaiting quota budget · ':data.status.state==='budget_stopped'?'Labeling paused at quota limit · ':data.status.state==='stopped'?'Labeling stopped · '+(data.status.reason||'inspect run status')+' · ':'')+`${data.manifest.window_start_iso.slice(0,10)} ${clock(data.manifest.window_start)} → ${data.manifest.window_end_iso.slice(0,10)} ${clock(data.manifest.window_end)}`;$('load-error').hidden=true;if(first){$('actor').innerHTML='<option value="">All actors</option>'+data.actors.filter((a:any)=>data.turns.some((t:any)=>t.actor_id===a.id)).map((a:any)=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');const requested=new URL(location.href).searchParams.get('turn');choose(data.turns.some((t:any)=>t.id===requested)?requested:(data.manifest.root_turn_id||data.turns[0]?.id));}else{renderList();if(!editing&&!selecting&&!wasReady&&generated(data.turns.find((t:any)=>t.id===selected)))choose(selected);}}catch(e){$('load-error').hidden=false;$('load-error').className='error';$('load-error').textContent=(e as Error).message+' Use Refresh to retry.';}}
+$('turn-list').addEventListener('click',e=>{const t=(e.target as HTMLElement).closest<HTMLElement>('[data-turn]');if(t)choose(t.dataset.turn!);});
+$('prediction').addEventListener('click',e=>{const b=(e.target as HTMLElement).closest<HTMLElement>('[data-message]');if(b){document.getElementById('source-'+b.dataset.message)?.scrollIntoView({block:'center',behavior:'smooth'});}});
+for(const id of ['search','actor','review-filter'])$(id).addEventListener('input',renderList);
+$('task-editor').addEventListener('input',e=>{const el=e.target as HTMLInputElement;const i=el.dataset.task,k=el.dataset.field;if(i!==undefined&&k){draft.tasks[Number(i)].changes[k]=el.value||null;($('json-editor') as HTMLTextAreaElement).value=JSON.stringify(draft,null,2);}});
+$('json-editor').addEventListener('input',()=>{try{draft=JSON.parse(($('json-editor') as HTMLTextAreaElement).value);}catch{}});
+function move(n:number){const list=visible(),i=list.findIndex((t:any)=>t.id===selected);const t=list[Math.max(0,Math.min(list.length-1,i+n))];if(t)choose(t.id);}
+$('edit').addEventListener('click',edit);$('previous').addEventListener('click',()=>move(-1));$('next').addEventListener('click',()=>move(1));$('approve').addEventListener('click',()=>save('approved'));$('reject').addEventListener('click',()=>save('rejected'));$('save').addEventListener('click',()=>save('corrected'));$('refresh').addEventListener('click',async()=>{await load();if(!editing&&!busy&&!selecting&&selected)await choose(selected);});
+document.addEventListener('keydown',e=>{if((e.target as HTMLElement).closest('input,textarea,select')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='j')move(1);if(e.key==='k')move(-1);});
+load();setInterval(()=>{if(!document.hidden&&!busy)load();},5000);
+</script>

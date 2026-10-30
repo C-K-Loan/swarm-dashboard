@@ -1,0 +1,7 @@
+---
+// Path form of /eval?schema= for the static demo build, which cannot read query strings.
+import EvalPage from "../../components/eval/EvalPage.astro";
+export const prerender = false;
+export function getStaticPaths() { return ["lean", "prose-v1", "prose-v2"].map(schema => ({ params: { schema } })); }
+---
+<EvalPage schema={Astro.params.schema} />

@@ -1,0 +1,43 @@
+# Large runtime data — regenerable from scripts, do not commit
+data/classified/
+data/prose/
+data/holdout/
+data/remote-codex/
+data/live-tmp/
+data/sft/
+data/eval/
+data/bucket_summaries.jsonl
+data/*.json
+data/*.bak*
+ui/public/data/*.json
+ui/public/data/*.txt
+ui/node_modules/
+ui/.astro/
+ui/dist/
+ui/screenshots/
+__pycache__/
+*.pyc
+.venv/
+venv/
+cost-log.txt
+BLOCKERS.md
+logs/
+
+# Private V0.2 runtime data and local test artifacts
+data/v02/
+data/eval
+ui/test-results/
+ui/playwright-report/
+
+# Local CCT registration metadata
+orchestrator-agents.json
+orchestrator-agents.json.lock
+dist-static/
+.openrouter_key
+
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+config/privacy-blocklist.txt
+config/fleet-aliases.json

@@ -1,0 +1,559 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import frozenFetch from "../lib/frozen-fetch.js?raw";
+
+export interface Props {
+  title?: string;
+}
+const { title = "swarm-board" } = Astro.props;
+const pathname = Astro.url.pathname.replace(/\/$/, "");
+// Footer (cost ticker + hackathon credit) is permanently off per CKL — the
+// cost comparison lives on /eval already; the credit line adds noise everywhere.
+
+// Load real cost summary for footer ticker
+type CostSummary = {
+  ours: { cost_usd: number; model: string; tier: string };
+  msgs: number;
+  tokens_in: number;
+  tokens_out: number;
+  extras?: {
+    summarization?: { cost_usd: number; buckets: number; tokens_in: number; tokens_out: number; model: string };
+  };
+  nebius_total_cost_usd?: number;
+  baselines: Record<string, { cost_usd: number; ratio: number }>;
+};
+let costSummary: CostSummary | null = null;
+try {
+  const raw = fs.readFileSync(path.resolve("../data/cost_summary.json"), "utf-8");
+  costSummary = JSON.parse(raw) as CostSummary;
+} catch {}
+
+// Fleet index for the dropdown (all 44 canonical fleets, classified/unclassified)
+type FleetIndex = {
+  fleets: Array<{
+    canonical: string;
+    sources: string[];
+    sessions: number;
+    cost_usd: number;
+    last_active: string;
+    classified: boolean;
+    classified_msgs: number;
+    privacy_locked: boolean;
+  }>;
+};
+let fleetIndex: FleetIndex | null = null;
+try {
+  const raw = fs.readFileSync(path.resolve("../data/fleet_index.json"), "utf-8");
+  fleetIndex = JSON.parse(raw) as FleetIndex;
+} catch {}
+
+// Org hierarchy for the org dropdown; also drives fleet→org lookup so the
+// fleet dropdown can narrow when an org is picked.
+type OrgHierarchy = {
+  orgs: Array<{ id: string; label: string }>;
+  agentToOrg: Record<string, string>;
+};
+let orgHierarchy: OrgHierarchy | null = null;
+try {
+  const raw = fs.readFileSync(path.resolve("../data/timeline_hierarchy.json"), "utf-8");
+  orgHierarchy = JSON.parse(raw) as OrgHierarchy;
+} catch {}
+
+// Precompute fleet-canonical → set of orgs that any member agent belongs to.
+// Uses timeline agents' fleet + agentToOrg mapping.
+const fleetToOrgs: Record<string, string[]> = {};
+try {
+  const tlRaw = fs.readFileSync(path.resolve("../data/timeline.json"), "utf-8");
+  const tl = JSON.parse(tlRaw) as { agents: Array<{ id: string; fleet?: string }> };
+  const atOrg = orgHierarchy?.agentToOrg || {};
+  const bucket: Record<string, Set<string>> = {};
+  for (const a of tl.agents) {
+    const org = atOrg[a.id];
+    const fleet = (a.fleet || "").trim();
+    if (!org || !fleet) continue;
+    (bucket[fleet] = bucket[fleet] || new Set()).add(org);
+  }
+  for (const [f, s] of Object.entries(bucket)) fleetToOrgs[f] = [...s];
+} catch {}
+
+// Second-pass enrichment: count bucket_summaries per canonical fleet so we can
+// show "✓" only when a fleet actually has dashboard-ready computed content
+// (not just raw classifier labels). CKL ask: don't mark everything.
+const fleetSummariesCount = new Map<string, number>();
+try {
+  const mergeMap = (fleetIndex as any)?.fleet_merge || {};
+  const raw = fs.readFileSync(path.resolve("../data/bucket_summaries.jsonl"), "utf-8");
+  for (const line of raw.split("\n")) {
+    if (!line) continue;
+    try {
+      const r = JSON.parse(line);
+      const proj = r.project || "?";
+      const canon = mergeMap[proj] || proj;
+      fleetSummariesCount.set(canon, (fleetSummariesCount.get(canon) || 0) + 1);
+    } catch {}
+  }
+} catch {}
+// Threshold = 50 buckets to count as "has content worth showing". Below that
+// a fleet has only a handful of hourly summaries and the widgets look empty.
+const SUMMARY_READY_THRESHOLD = 50;
+// Static demo build (scripts/freeze/build.sh): API calls are answered from pre-built files, absent pages leave the nav.
+const FROZEN = import.meta.env.PUBLIC_FROZEN === "1";
+const split = (v?: string) => (v || "").split(",").filter(Boolean);
+const frozenConfig = FROZEN ? { base: import.meta.env.BASE_URL, runs: split(import.meta.env.PUBLIC_FROZEN_RUNS), defaultRun: import.meta.env.PUBLIC_FROZEN_DEFAULT_RUN, pages: split(import.meta.env.PUBLIC_FROZEN_PAGES) } : null;
+// Nav entries for absent pages are removed from the built HTML by scripts/freeze/fix_links.py.
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title}</title>
+  {FROZEN && <script is:inline set:html={`window.__FROZEN__=${JSON.stringify(frozenConfig)};\n${frozenFetch}`} />}
+  {FROZEN && <style is:inline set:html={"body[data-frozen] .frozen-hide{display:none!important}"} />}
+  {FROZEN && <script is:inline set:html={`(function(){var F=window.__FROZEN__,ok=new Set(F.pages.concat([""]));
+function dest(a){var u=new URL(a.href,location.href);if(u.origin!==location.origin)return null;var p=u.pathname;if(p.indexOf(F.base)===0)p="/"+p.slice(F.base.length);var seg=p.split("/")[1]||"";if(/^(data|frozen|_astro)$/.test(seg))return null;return {ok:ok.has(seg),url:F.base+p.slice(1)+u.search+u.hash};}
+function mark(){document.querySelectorAll("a[href]").forEach(function(a){var d=dest(a);if(d&&!d.ok){a.title="Not part of the static demo";a.style.opacity=".45";a.style.cursor="default";}});}
+document.addEventListener("DOMContentLoaded",mark);new MutationObserver(function(){clearTimeout(window.__frozenMark);window.__frozenMark=setTimeout(mark,200);}).observe(document.documentElement,{childList:true,subtree:true});
+document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href]");if(!a||e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||a.target)return;var d=dest(a);if(!d)return;e.preventDefault();if(d.ok)location.assign(d.url);},true);})();`} />}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" />
+  <script is:inline src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+  <!-- v13-EE: marked for in-bubble markdown rendering (gfm, breaks, no raw html) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js" defer></script>
+  <style is:global>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0a0f;
+      --panel: #15151e;
+      --panel-2: #1c1c28;
+      --border: #2a2a3a;
+      --text: #e8e8f0;
+      --muted: #8a8aa0;
+      --accent: #00e8c6;
+      --warn: #ffb86c;
+      --err: #ff5c6c;
+      --ok: #5cff8c;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Inter", system-ui, sans-serif; }
+    /* Dark-theme scrollbars — picked up by every scrollable area on the page */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #0e0e14; border-radius: 5px; }
+    ::-webkit-scrollbar-thumb { background: #3a3a4a; border-radius: 5px; border: 2px solid #0e0e14; }
+    ::-webkit-scrollbar-thumb:hover { background: #5a5a7a; }
+    ::-webkit-scrollbar-corner { background: #0e0e14; }
+    * { scrollbar-width: thin; scrollbar-color: #3a3a4a #0e0e14; }
+    header { padding: 4px 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    header h1 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+    .view-toggle { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+    .view-toggle .nav-link { color: var(--muted); text-decoration: none; padding: 2px 9px; border-radius: 4px; font-size: 11px; font-family: var(--mono); }
+    .view-toggle .nav-link:hover { color: var(--text); background: var(--panel-2); }
+    .fleet-select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-family: var(--mono); appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 10px) 50%, calc(100% - 7px) 50%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+    .fleet-combo { position: relative; display: inline-flex; align-items: center; }
+    .fleet-combo input.fleet-select { width: 130px; cursor: text; outline: none; }
+    header .tl-controls > .label { display: none; } /* labels live in each control's tooltip to keep one header row */
+    .fleet-combo input.fleet-select:focus { width: 240px; }
+    #sort-select { width: 130px; }
+    .fleet-combo input.fleet-select:focus { border-color: var(--muted); }
+    #fleet-clear { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 4px; }
+    #fleet-clear:hover { color: var(--text); }
+    .fleet-dropdown { position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; max-width: 420px; max-height: 420px; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 6px 24px rgba(0,0,0,0.4); z-index: 100; padding: 4px 0; font-family: var(--mono); font-size: 11px; }
+    .fleet-option { padding: 4px 10px; color: var(--text); cursor: pointer; white-space: nowrap; }
+    .fleet-option:hover, .fleet-option.active { background: var(--panel-2, #16161f); color: #00e8c6; }
+    .fleet-option-all { font-weight: 600; border-bottom: 1px solid var(--border); margin-bottom: 2px; padding-bottom: 6px; }
+    .fleet-option-detail { color: var(--muted); font-weight: 400; }
+    .fleet-empty { padding: 10px; color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center; }
+    .fleet-select:hover { border-color: var(--muted); }
+    .fleet-select:focus { outline: none; border-color: var(--accent); }
+    .fleet-select option { background: var(--panel); color: var(--text); }
+    header .status { color: var(--muted); font-size: 12px; font-family: var(--mono); display: flex; align-items: center; gap: 6px; }
+    .live-dot { color: var(--muted); font-size: 14px; line-height: 1; transition: color 300ms; }
+    .live-dot.live-on { color: var(--accent); animation: live-pulse 2.4s ease-in-out infinite; }
+    .live-dot.live-off { color: var(--muted); opacity: 0.4; }
+    .live-dot.live-flash { color: var(--warn); animation: none; }
+    @keyframes live-pulse { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.4; } }
+    main { padding: 20px 28px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+    .toolbar select, .toolbar input { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; font-size: 13px; font-family: inherit; }
+    .toolbar .label { color: var(--muted); font-size: 12px; }
+    .toolbar .cost-dial { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .toolbar .cost-tier { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; color: var(--text); text-decoration: none; display: inline-block; }
+    .toolbar .cost-tier:hover { border-color: var(--muted); }
+    .toolbar .cost-tier.active { background: var(--accent); color: #000; border-color: var(--accent); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
+    footer { padding: 0; color: var(--muted); font-size: 11px; font-family: var(--mono); margin-top: 40px; }
+    footer a { color: var(--accent); text-decoration: none; }
+    .footer-line { padding: 14px 28px; border-top: 1px solid var(--border); }
+    .cost-ticker { padding: 16px 28px; background: linear-gradient(90deg, rgba(0,232,198,0.03), transparent); border-top: 1px solid var(--border); }
+    .cost-ticker .ct-row { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    .cost-ticker .ct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+    .cost-ticker .ct-cell { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; }
+    .cost-ticker .ct-cell.ct-ours { border-color: var(--accent); background: rgba(0,232,198,0.05); }
+    .cost-ticker .ct-cost { font-size: 20px; font-weight: 700; font-family: var(--mono); color: var(--text); letter-spacing: -0.02em; }
+    .cost-ticker .ct-ours .ct-cost { color: var(--accent); }
+    .cost-ticker .ct-model { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+    .cost-ticker .ct-tag { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+    .cost-ticker .ct-ours .ct-tag { color: var(--accent); }
+    /* Header: one row, never wraps; long pickers shrink instead. */
+    .hdr-row { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+    .hdr-row > * { flex: 0 0 auto; }
+    .hdr-row .fleet-select, .hdr-row select { max-width: 150px; }
+    .nav-more { position: relative; display: inline-block; }
+    .nav-more > summary { list-style: none; cursor: pointer; }
+    .nav-more > summary::-webkit-details-marker { display: none; }
+    .nav-more-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 80; display: flex; flex-direction: column; gap: 2px; padding: 6px; min-width: 130px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+    @media (max-width: 1500px) { .hdr-row .fleet-select, .hdr-row select { max-width: 118px; } .hdr-row { gap: 6px; } }
+  </style>
+</head>
+<body data-v02-review={["/review", "/eval", "/eval-review", "/training"].some(p => pathname === p || pathname.startsWith(p + "/")) ? "true" : undefined} data-frozen={FROZEN ? "true" : undefined}>
+  <header>
+    <div class="hdr-row">
+      <h1>swarm-board <small style="color:#5ce6c6">V0.2</small>{FROZEN && <small style="color:#ffd166;margin-left:6px">static demo</small>}</h1>
+      <nav class="view-toggle">
+        <a href="/timeline" class="nav-link" data-nav="timeline">timeline</a>
+        <a href="/review" class="nav-link" data-nav="review">review</a>
+        <a href="/training" class="nav-link" data-nav="training">training</a>
+        <a href="/eval" class="nav-link" data-nav="eval">eval</a>
+        {/* Less-used pages fold into one menu so the header stays a single row at 1366px. */}
+        <details class="nav-more">
+          <summary class="nav-link" data-nav-more>more ▾</summary>
+          <div class="nav-more-menu">
+            <a href="/harness-config" class="nav-link" data-nav="harness-config">harness cfg</a>
+            <a href="/about" class="nav-link" data-nav="about">about</a>
+            <a href="/settings" class="nav-link" data-nav="settings">settings</a>
+            <a href="/help" class="nav-link" data-nav="help">help</a>
+          </div>
+        </details>
+      </nav>
+      <div class="fleet-combo" id="org-combo">
+        <input id="org-input" class="fleet-select" placeholder={`all orgs (${orgHierarchy?.orgs.length || 0})`} aria-label="Filter by org" autocomplete="off" spellcheck="false" />
+        <button id="org-clear" type="button" aria-label="Clear org filter" title="Clear org filter" hidden>×</button>
+        {/* Hidden shim for pages that read document.getElementById("org-select").value */}
+        <select id="org-select" aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+          <option value="" selected>all orgs ({orgHierarchy?.orgs.length || 0})</option>
+          {orgHierarchy && orgHierarchy.orgs.map((o) => (
+            <option value={o.id}>{o.label}</option>
+          ))}
+        </select>
+        <div id="org-dropdown" class="fleet-dropdown" hidden role="listbox">
+          <div class="fleet-option fleet-option-all" data-value="" role="option">all orgs ({orgHierarchy?.orgs.length || 0})</div>
+          {orgHierarchy && orgHierarchy.orgs.map((o) => (
+            <div class="fleet-option" data-value={o.id} title={`org: ${o.id}`} role="option">{o.label}</div>
+          ))}
+          <div id="org-empty" class="fleet-empty" hidden>no match</div>
+        </div>
+      </div>
+      <div class="fleet-combo" id="fleet-combo">
+        <input id="fleet-input" class="fleet-select" placeholder={`all fleets (${fleetIndex?.fleets.length || 0})`} aria-label="Filter by fleet" autocomplete="off" spellcheck="false" />
+        <button id="fleet-clear" type="button" aria-label="Clear fleet filter" title="Clear filter" hidden>×</button>
+        {/* Hidden shim: pages still read `document.getElementById("fleet-select").value` + `.selectedOptions[0].data-*` */}
+        <select id="fleet-select" aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+          <option value="" selected>all fleets ({fleetIndex?.fleets.length || 0})</option>
+          {fleetIndex && fleetIndex.fleets.map((f) => (
+            <option value={f.canonical} data-classified={f.classified ? "1" : "0"} data-privacy={f.privacy_locked ? "1" : "0"}>{f.canonical}</option>
+          ))}
+        </select>
+        <div id="fleet-dropdown" class="fleet-dropdown" hidden role="listbox">
+          <div class="fleet-option fleet-option-all" data-value="" data-classified="0" data-privacy="0" data-summaries="0" role="option">all fleets ({fleetIndex?.fleets.length || 0})</div>
+          {fleetIndex && fleetIndex.fleets.map((f) => {
+            const nSum = fleetSummariesCount.get(f.canonical) || 0;
+            const ready = nSum >= SUMMARY_READY_THRESHOLD;
+            const mark = f.privacy_locked ? "🔒" : (ready ? "✓" : (f.classified ? "·" : "∅"));
+            const detail = f.classified
+              ? `${f.classified_msgs.toLocaleString()} msgs`
+              : (f.privacy_locked ? "privacy-locked" : `${f.sessions} sess · $${f.cost_usd.toFixed(0)}`);
+            const title = `canonical: ${f.canonical}; sources: ${f.sources.join(", ") || f.canonical}; bucket summaries: ${nSum}${ready ? " (dashboard-ready)" : (f.classified ? " (classifier labels only)" : "")}`;
+            const orgs = (fleetToOrgs[f.canonical] || []).join(",");
+            return <div class="fleet-option" data-value={f.canonical} data-classified={f.classified ? "1" : "0"} data-privacy={f.privacy_locked ? "1" : "0"} data-summaries={nSum} data-orgs={orgs} title={title} role="option">{mark} {f.canonical} <span class="fleet-option-detail">({detail})</span></div>;
+          })}
+          <div id="fleet-empty" class="fleet-empty" hidden>no match</div>
+        </div>
+      </div>
+      <select id="sort-select" class="fleet-select" aria-label="Sort agents">
+        <option value="activity">sort: activity (turns)</option>
+        <option value="first-activity">sort: first activity</option>
+        <option value="last-activity">sort: last activity</option>
+        <option value="messages">sort: total messages</option>
+        <option value="cost">sort: total cost</option>
+        <option value="alpha">sort: alphabetical</option>
+        <option value="status">sort: status (blocked first)</option>
+      </select>
+      <slot name="header-controls" />
+    </div>
+    <div class="status" style="display:none">
+      <span id="live-indicator" class="live-dot" title="dashboard live-refresh status">●</span>
+      <span id="live-status-label">static</span>
+      <span id="updated" hidden></span>
+    </div>
+  </header>
+  <slot />
+  <script>
+    document.getElementById("updated").textContent = new Date().toLocaleTimeString();
+    // "more" nav menu closes on any outside click.
+    document.addEventListener("click", (ev) => { const d = document.querySelector(".nav-more"); if (d?.open && !d.contains(ev.target)) d.open = false; });
+    // Highlight active nav link
+    const p = location.pathname;
+    const activeNav = p.startsWith("/review") ? "review" : p.startsWith("/timeline") ? "timeline" : p.startsWith("/harness-config") ? "harness-config" : p.startsWith("/training") ? "training" : p.startsWith("/eval") ? "eval" : p.startsWith("/about") ? "about" : p.startsWith("/settings") ? "settings" : p.startsWith("/help") ? "help" : null;
+    if (activeNav) {
+      const link = document.querySelector(`[data-nav="${activeNav}"]`);
+      link?.setAttribute("style", "color: #00e8c6; background: var(--panel-2);");
+      if (link?.closest(".nav-more")) document.querySelector("[data-nav-more]")?.setAttribute("style", "color: #00e8c6;");
+    }
+    // Combobox factory — type-to-filter custom dropdown, used for both the fleet
+    // and the org selector. Dispatches `${eventName}` and syncs an optional shim <select>.
+    function mountCombo({ comboId, inputId, panelId, clearId, emptyId, shimId, urlParam, eventName, extractDetail, singular, plural, onNarrow }) {
+      const combo = document.getElementById(comboId);
+      const input = document.getElementById(inputId);
+      const panel = document.getElementById(panelId);
+      const clearBtn = document.getElementById(clearId);
+      const emptyEl = document.getElementById(emptyId);
+      const shimSelect = shimId ? document.getElementById(shimId) : null;
+      if (!combo || !input || !panel) return null;
+      const options = [...panel.querySelectorAll(".fleet-option")];
+      let activeIdx = -1;
+      let selectedValue = "";
+
+      function setActive(i) {
+        panel.querySelectorAll(".fleet-option.active").forEach((n) => n.classList.remove("active"));
+        const visible = options.filter((o) => !o.hidden);
+        if (!visible.length) { activeIdx = -1; return; }
+        activeIdx = Math.max(0, Math.min(i, visible.length - 1));
+        const el = visible[activeIdx];
+        el.classList.add("active");
+        el.scrollIntoView({ block: "nearest" });
+      }
+      function openPanel() {
+        panel.hidden = false;
+        // If the input shows the current committed selection, show the full list
+        // (so clicking into a URL-prefilled field doesn't filter to one item).
+        const showAll = input.value === labelFor(selectedValue);
+        filter(showAll ? "" : input.value);
+        setActive(0);
+      }
+      function closePanel() {
+        panel.hidden = true;
+        activeIdx = -1;
+      }
+      function filter(q) {
+        const s = (q || "").trim().toLowerCase();
+        let n = 0;
+        for (const o of options) {
+          if (o.dataset.narrowHidden === "1") { o.hidden = true; continue; }
+          const v = (o.getAttribute("data-value") || "").toLowerCase();
+          const txt = o.textContent.toLowerCase();
+          const match = !s || v.includes(s) || txt.includes(s);
+          o.hidden = !match;
+          if (match) n++;
+        }
+        if (emptyEl) emptyEl.hidden = n > 0;
+      }
+      function labelFor(value) {
+        if (!value) return "";
+        const o = options.find((x) => x.getAttribute("data-value") === value);
+        return o ? value : "";
+      }
+      function select(value, { dispatch = true } = {}) {
+        const label = labelFor(value);
+        selectedValue = value || "";
+        input.value = label;
+        clearBtn.hidden = !label;
+        if (shimSelect) shimSelect.value = value || "";
+        const u = new URL(location.href);
+        if (value) u.searchParams.set(urlParam, value); else u.searchParams.delete(urlParam);
+        history.replaceState({}, "", u.toString());
+        if (dispatch) {
+          const o = options.find((x) => x.getAttribute("data-value") === value);
+          const detail = extractDetail ? extractDetail(value, o) : { [singular]: value };
+          window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        }
+        if (onNarrow) onNarrow(value);
+        closePanel();
+      }
+
+      // Pre-select from URL on load.
+      const want = new URLSearchParams(location.search).get(urlParam) || "";
+      const haveMatch = want && options.some((o) => o.getAttribute("data-value") === want);
+      if (haveMatch) {
+        selectedValue = want;
+        input.value = want;
+        clearBtn.hidden = false;
+        if (shimSelect) shimSelect.value = want;
+      } else {
+        // Force the shim to the "all" option (value=""), not whatever selectedIndex=0 fallback
+        // the browser inferred. Chrome has quirks where an "" value option isn't picked first.
+        if (shimSelect) { shimSelect.selectedIndex = 0; shimSelect.value = ""; }
+        input.value = "";
+        if (clearBtn) clearBtn.hidden = true;
+        if (want) input.placeholder = `all ${plural} (${options.length - 1}) · unknown "${want}"`;
+      }
+      window.addEventListener("DOMContentLoaded", () => {
+        const detail = extractDetail
+          ? extractDetail(haveMatch ? want : "", haveMatch ? options.find((x) => x.getAttribute("data-value") === want) : null)
+          : { [singular]: haveMatch ? want : "" };
+        detail[`url${singular[0].toUpperCase()}${singular.slice(1)}`] = want;
+        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+        if (onNarrow && haveMatch) onNarrow(want);
+      }, { once: true });
+
+      input.addEventListener("focus", (e) => {
+        openPanel();
+        // Select-all so typing immediately replaces a pre-filled selection.
+        if (input.value && input.value === labelFor(selectedValue)) {
+          setTimeout(() => input.select(), 0);
+        }
+      });
+      input.addEventListener("click", () => {
+        openPanel();
+        if (input.value && input.value === labelFor(selectedValue)) input.select();
+      });
+      input.addEventListener("input", () => { openPanel(); clearBtn.hidden = !input.value; });
+      input.addEventListener("keydown", (e) => {
+        if (panel.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { openPanel(); e.preventDefault(); return; }
+        const visible = options.filter((o) => !o.hidden);
+        if (e.key === "ArrowDown") { e.preventDefault(); setActive((activeIdx + 1) % Math.max(1, visible.length)); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); setActive((activeIdx - 1 + visible.length) % Math.max(1, visible.length)); }
+        else if (e.key === "Enter") {
+          e.preventDefault();
+          const el = visible[activeIdx] || visible[0];
+          if (el) select(el.getAttribute("data-value"));
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          if (!panel.hidden) closePanel();
+          else { input.value = ""; clearBtn.hidden = true; select(""); }
+        }
+      });
+      panel.addEventListener("mousedown", (e) => {
+        const target = (e.target instanceof HTMLElement) ? e.target.closest(".fleet-option") : null;
+        if (target && !target.hidden) {
+          e.preventDefault();
+          select(target.getAttribute("data-value"));
+        }
+      });
+      document.addEventListener("mousedown", (e) => {
+        if (!combo.contains(e.target)) closePanel();
+      });
+      clearBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        input.value = "";
+        clearBtn.hidden = true;
+        select("");
+        input.focus();
+      });
+
+      return {
+        options,
+        select,
+        getValue: () => selectedValue,
+        narrow: (matchFn) => {
+          // matchFn(option) returns true if the option should be visible under the current narrow.
+          for (const o of options) {
+            const base = o.classList.contains("fleet-option-all");
+            if (base) { o.dataset.narrowHidden = ""; continue; }
+            o.dataset.narrowHidden = matchFn(o) ? "" : "1";
+          }
+          filter(input.value);
+        },
+      };
+    }
+
+    (() => {
+      // Mount the org combo first so the fleet combo can call its onNarrow once at init.
+      const orgCombo = mountCombo({
+        comboId: "org-combo", inputId: "org-input", panelId: "org-dropdown",
+        clearId: "org-clear", emptyId: "org-empty", shimId: "org-select",
+        urlParam: "org", eventName: "orgchange",
+        extractDetail: (value) => ({ org: value }),
+        singular: "org", plural: "orgs",
+      });
+      const fleetCombo = mountCombo({
+        comboId: "fleet-combo", inputId: "fleet-input", panelId: "fleet-dropdown",
+        clearId: "fleet-clear", emptyId: "fleet-empty", shimId: "fleet-select",
+        urlParam: "fleet", eventName: "fleetchange",
+        extractDetail: (value, o) => ({
+          fleet: value,
+          classified: o?.getAttribute("data-classified") === "1",
+          privacy: o?.getAttribute("data-privacy") === "1",
+        }),
+        singular: "fleet", plural: "fleets",
+      });
+
+      // When org changes, hide fleet options not in that org.
+      function narrowFleetByOrg(orgValue) {
+        if (!fleetCombo) return;
+        if (!orgValue) {
+          fleetCombo.narrow(() => true);
+          return;
+        }
+        fleetCombo.narrow((opt) => {
+          const orgs = (opt.getAttribute("data-orgs") || "").split(",").filter(Boolean);
+          return orgs.includes(orgValue);
+        });
+      }
+      window.addEventListener("orgchange", (ev) => {
+        narrowFleetByOrg(ev?.detail?.org || "");
+      });
+      // Initial narrow in case URL already carried ?org=
+      const urlOrg = new URLSearchParams(location.search).get("org") || "";
+      if (urlOrg) narrowFleetByOrg(urlOrg);
+
+      // Back-compat shim for pages that still call window.setFleetOptions
+      window.setFleetOptions = () => {};
+    })();
+
+    // v14-HH: live-refresh poller — fetches /.last-refresh every 30s; on change,
+    // re-fetches timeline/transcript/cards and dispatches 'liverefresh' event.
+    (() => {
+      const indicator = document.getElementById("live-indicator");
+      const label = document.getElementById("live-status-label");
+      let last = null;
+      let streak = 0;
+      async function poll() {
+        try {
+          const r = await fetch("/data/last-refresh.txt?cb=" + Date.now());
+          if (!r.ok) throw new Error("no sentinel");
+          const ts = (await r.text()).trim();
+          const isFirst = last === null;
+          if (!isFirst && ts !== last) {
+            // real change — flash + re-fetch
+            if (indicator) { indicator.classList.add("live-flash"); setTimeout(() => indicator?.classList.remove("live-flash"), 1200); }
+            if (label) label.textContent = "updated " + new Date().toLocaleTimeString();
+            window.dispatchEvent(new CustomEvent("liverefresh", { detail: { ts } }));
+            streak = 0;
+          } else if (!isFirst) {
+            streak++;
+          }
+          last = ts;
+          if (indicator) {
+            indicator.classList.add("live-on");
+            indicator.classList.remove("live-off");
+          }
+          if (label && (isFirst || streak > 0)) label.textContent = "live · last tick " + last.slice(11,19) + "Z";
+        } catch (e) {
+          if (indicator) { indicator.classList.remove("live-on"); indicator.classList.add("live-off"); }
+          if (label) label.textContent = "static";
+        }
+      }
+      poll();
+      setInterval(poll, 30000);
+    })();
+
+    // v14-GG: sort dropdown with URL persistence + custom event broadcast
+    (() => {
+      const sel = document.getElementById("sort-select");
+      if (!sel) return;
+      const want = new URLSearchParams(location.search).get("sort") || "activity";
+      if ([...sel.options].some((o) => o.value === want)) sel.value = want;
+      window._agentSort = sel.value;
+      sel.addEventListener("change", () => {
+        const v = sel.value;
+        window._agentSort = v;
+        const u = new URL(location.href);
+        if (v && v !== "activity") u.searchParams.set("sort", v); else u.searchParams.delete("sort");
+        history.replaceState({}, "", u.toString());
+        window.dispatchEvent(new CustomEvent("sortchange", { detail: { sort: v } }));
+      });
+    })();
+  </script>
+</body>
+</html>
