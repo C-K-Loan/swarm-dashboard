@@ -43,6 +43,20 @@ Stage 2 mergers, mean F1 over four tree levels: Qwen3-235B 0.94, Qwen3-8B 0.76, 
 - The LoRA emits a third of the reference's relationships, and its validation turns come from the same day as its training turns (later in time, with a gap).
 - All state-graph numbers above recompute exactly from the public dataset; see [docs/eval.md](docs/eval.md).
 
+## NVIDIA Nemotron and Nebius
+
+**NVIDIA Nemotron 3 Ultra (550B-A55B, open model)**
+- Free second teacher for the project state graph: its labels are part of the LoRA training data, next to Claude Haiku 4.5.
+- Strongest open model on held-out state-graph turns: 64.6% task agreement with Claude Haiku, 99.2% valid structured output, and the same relationship rate as Haiku (0.47 per turn).
+- Stage 2 summary merger: 0.93 F1 against Claude Haiku's merges, tying Qwen3-235B.
+- Stage 1 intent tags: best agent-intent agreement of every model tested (0.81), Claude included.
+- Run via OpenRouter's free tier and NVIDIA's build.nvidia.com API (Nemotron is not available for fine-tuning on Token Factory).
+
+**Nebius Token Factory: where it accelerated the work**
+- Serverless open-model inference with no infrastructure: Qwen3-30B-A3B labeled all 1,902 day-one turns at about 1,950 turns per hour for USD 0.76; Qwen3-235B merged the summaries of the whole 9-day jam in 7 minutes for USD 0.34; Qwen3-30B-A3B also writes the Stage 1 hourly bullets.
+- LoRA fine-tuning: two Qwen3-30B-A3B LoRA jobs (16 and 22 minutes) on teacher-labeled data, no GPU setup. Recipe: [docs/training-nebius-token-factory.md](docs/training-nebius-token-factory.md).
+- The fine-tuned 30B then matches an untuned Qwen3-235B on held-out turns at about 19x lower inference cost than Claude Haiku.
+
 ## Quick start
 
 ```bash
