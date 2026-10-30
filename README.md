@@ -1,10 +1,16 @@
 # CCT Swarm Dashboard
 
+![Swarm Board overview](docs/media/system-overview.gif)
+
+![Timeline: select a time slice, every widget follows](docs/media/dashboard-timeline-select.gif)
+
 Observability for a fleet of concurrent AI coding agents. The dashboard turns raw agent transcripts into a timeline (agents x time), an agent-to-agent message graph and readable summaries, and it ships the pipelines and evals behind those summaries.
 
 The data is one developer's agent fleet (Claude Code and Codex sessions, coordinated by a small harness called `cct`) building a game during a weekend jam: 76 agent sessions, 10,935 prose turns.
 
 ## What it summarizes, and how
+
+![Two-stage summary pipeline](docs/media/explainer-summary-pipeline.gif)
 
 **Prose pipeline, two stages**
 
@@ -15,7 +21,15 @@ The data is one developer's agent fleet (Claude Code and Codex sessions, coordin
 
 Per turn, a model reads the turn plus a compact view of the graph so far and writes a JSON patch: tasks, decisions, relationships, actor role and state, each change backed by an exact quote. A strict validator applies it. Teacher labels (Claude Haiku 4.5, NVIDIA Nemotron 3 Ultra) were distilled into a LoRA on Qwen3-30B-A3B. The LoRA was trained on Nebius Token Factory and served on Modal (vLLM, H100), because Token Factory cannot serve Qwen3-30B-A3B fine-tunes.
 
+![Project state graph, built turn by turn](docs/media/explainer-state-graph.gif)
+
+![Task graph replay](docs/media/dashboard-taskgraph-replay.gif)
+
 ## Results
+
+![Benchmark: every model we ran](docs/media/benchmark-board.gif)
+
+![Eval summary](docs/media/dashboard-eval-summary.gif)
 
 As shown on the dashboard's **eval -> Summary** tab. Every reference is a model; there is no human ground truth.
 
@@ -53,9 +67,13 @@ Stage 2 mergers, mean F1 over four tree levels: Qwen3-235B 0.94, Qwen3-8B 0.76, 
 - Run via OpenRouter's free tier and NVIDIA's build.nvidia.com API (Nemotron is not available for fine-tuning on Token Factory).
 
 **Nebius Token Factory: where it accelerated the work**
+
+![Training and eval on Nebius Token Factory](docs/media/explainer-training-eval.gif)
 - Serverless open-model inference with no infrastructure: Qwen3-30B-A3B labeled all 1,902 day-one turns at about 1,950 turns per hour for USD 0.76; Qwen3-235B merged the summaries of the whole 9-day jam in 7 minutes for USD 0.34; Qwen3-30B-A3B also writes the Stage 1 hourly bullets.
 - LoRA fine-tuning: two Qwen3-30B-A3B LoRA jobs (16 and 22 minutes) on teacher-labeled data, no GPU setup. Recipe: [docs/training-nebius-token-factory.md](docs/training-nebius-token-factory.md).
 - The fine-tuned 30B then matches an untuned Qwen3-235B on held-out turns at about 19x lower inference cost than Claude Haiku.
+
+![Agent-to-agent comms with the transcript following](docs/media/dashboard-a2a-transcript.gif)
 
 ## Quick start
 
