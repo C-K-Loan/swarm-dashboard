@@ -1,5 +1,7 @@
 # CCT Swarm Dashboard
 
+**Interactive demo:** [ckl.sh/projects/swarm-board](https://ckl.sh/projects/swarm-board) · **Dataset:** [CKL/wow-cod-thps4-gamejam](https://huggingface.co/datasets/CKL/wow-cod-thps4-gamejam) · **Adapters:** [LoRA v2](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v2), [LoRA v1](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1)
+
 ![Swarm Board overview](docs/media/system-overview.gif)
 
 ![Timeline: select a time slice, every widget follows](docs/media/dashboard-timeline-select.gif)
@@ -82,7 +84,7 @@ cd ui && npm ci && npm run dev              # http://127.0.0.1:4322
 python3 -m pytest -q scripts ui/tests       # pipeline tests
 ```
 
-The dashboard needs a `data/` directory: get the `cct-swarm-gamejam` dataset and lay it out as described in [docs/quickstart.md](docs/quickstart.md). A static build with no backend: `scripts/freeze/build.sh`.
+The dashboard needs a `data/` directory: get the `wow-cod-thps4-gamejam` dataset and lay it out as described in [docs/quickstart.md](docs/quickstart.md). A static build with no backend: `scripts/freeze/build.sh`.
 
 ## Documentation
 

@@ -15,12 +15,12 @@ Everything here runs locally. Nothing in this repository uploads, deploys or cal
 
 ## 2. Get the data
 
-The dashboard and the pipelines read a `data/` directory that is not part of this repository. The public copy is the Hugging Face dataset `cct-swarm-gamejam` (card: `README.md` in the dataset). Download it and lay it out:
+The dashboard and the pipelines read a `data/` directory that is not part of this repository. The public copy is the Hugging Face dataset `wow-cod-thps4-gamejam` (card: `README.md` in the dataset). Download it and lay it out:
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-hf download CKL/cct-swarm-gamejam --repo-type dataset --local-dir ../cct-swarm-gamejam
-scripts/setup_public_data.sh ../cct-swarm-gamejam
+hf download CKL/wow-cod-thps4-gamejam --repo-type dataset --local-dir ../wow-cod-thps4-gamejam
+scripts/setup_public_data.sh ../wow-cod-thps4-gamejam
 ```
 
 `setup_public_data.sh` copies each dataset folder to the path the code reads (for example `labels/<run>/` -> `data/v02/<run>/`, `prose-v01b/` -> `data/v01b/`, `spend/` -> the spend ledgers in `data/v02/`) and rebuilds every run's `turns.json` from the shared `source/turns.json` (`scripts/v02/restore_run_turns.py`; each run labeled a prefix of the source turns, its `manifest.json` gives the count).

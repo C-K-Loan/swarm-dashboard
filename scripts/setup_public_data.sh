@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Lay out the public Hugging Face dataset (cct-swarm-gamejam) as the data/ tree the code expects. Local only.
-# usage: scripts/setup_public_data.sh /path/to/cct-swarm-gamejam
+# Lay out the public Hugging Face dataset (wow-cod-thps4-gamejam) as the data/ tree the code expects. Local only.
+# usage: scripts/setup_public_data.sh /path/to/wow-cod-thps4-gamejam
 set -euo pipefail
-HF=${1:?usage: scripts/setup_public_data.sh /path/to/cct-swarm-gamejam}
+HF=${1:?usage: scripts/setup_public_data.sh /path/to/wow-cod-thps4-gamejam}
 cd "$(dirname "$0")/.."
 mkdir -p data/v02/_eval data/v02/_multi-teacher data/v02/_sender-attribution data/v01b
 cp -r "$HF/source" data/v02/gamejam-full-anchored
