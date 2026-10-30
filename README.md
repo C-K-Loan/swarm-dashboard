@@ -1,6 +1,6 @@
 # CCT Swarm Dashboard
 
-**Interactive demo:** [ckl.sh/projects/swarm-board](https://ckl.sh/projects/swarm-board) · **Dataset:** [CKL/wow-cod-thps4-gamejam](https://huggingface.co/datasets/CKL/wow-cod-thps4-gamejam) · **Adapters:** [LoRA v2](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v2), [LoRA v1](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1)
+**Interactive demo:** [ckl.sh/demos/swarm-board](https://ckl.sh/demos/swarm-board) · **Dataset:** [CKL/wow-cod-thps4-gamejam](https://huggingface.co/datasets/CKL/wow-cod-thps4-gamejam) · **Adapters:** [LoRA v2](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v2), [LoRA v1](https://huggingface.co/CKL/cct-v03-lean-qwen3-30b-a3b-lora-r16-v1)
 
 ![Swarm Board overview](docs/media/system-overview.gif)
 

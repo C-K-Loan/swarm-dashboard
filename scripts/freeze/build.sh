@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Static demo build (no backend): freeze a data slice, then build the Astro UI with every page prerendered.
-# Usage: [FREEZE_BASE=/projects/swarm-board/] scripts/freeze/build.sh [OUT]   (default OUT dist-static/; local only, never publishes)
-# Serve: mkdir -p /tmp/sb/projects && ln -sfn OUT/site /tmp/sb/projects/swarm-board && python3 -m http.server 8791 -d /tmp/sb
-#        then open http://localhost:8791/projects/swarm-board/   (FREEZE_BASE=/ serves OUT/site at the root instead)
+# Usage: [FREEZE_BASE=/demos/swarm-board/] scripts/freeze/build.sh [OUT]   (default OUT dist-static/; local only, never publishes)
+# Serve: mkdir -p /tmp/sb/demos && ln -sfn OUT/site /tmp/sb/demos/swarm-board && python3 -m http.server 8791 -d /tmp/sb
+#        then open http://localhost:8791/demos/swarm-board/   (FREEZE_BASE=/ serves OUT/site at the root instead)
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${1:-$REPO/dist-static}
 CFG=${FREEZE_CONFIG:-$REPO/scripts/freeze/slice.json}
-# Site base path: the planned home is a /projects/swarm-board page of a personal site (not deployed yet).
-BASE=${FREEZE_BASE:-/projects/swarm-board/}
+# Site base path: the demo lives under /demos/swarm-board/ on a personal site.
+BASE=${FREEZE_BASE:-/demos/swarm-board/}
 WORK=$(mktemp -d /tmp/freeze-build.XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
 

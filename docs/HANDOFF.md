@@ -57,4 +57,4 @@ Flip each Hugging Face repo to public in its settings (or `hf repo settings <rep
 
 ## 5. Static demo
 
-The static build (`scripts/freeze/build.sh`, base `/projects/swarm-board/`) is a folder of HTML, JS and JSON with no backend. It is hosted separately by the owner; nothing in this repository deploys it.
+The static build (`scripts/freeze/build.sh`, base `/demos/swarm-board/`) is a folder of HTML, JS and JSON with no backend. It is hosted separately by the owner; nothing in this repository deploys it.

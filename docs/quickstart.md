@@ -52,9 +52,9 @@ Pages: `timeline` (agents x time, state graph, A2A comms, transcript), `training
 ### Static demo build (no backend)
 
 ```bash
-FREEZE_BASE=/projects/swarm-board/ scripts/freeze/build.sh dist-static
-mkdir -p /tmp/sb/projects && ln -sfn "$PWD/dist-static/site" /tmp/sb/projects/swarm-board
-python3 -m http.server 8791 -d /tmp/sb      # open http://localhost:8791/projects/swarm-board/
+FREEZE_BASE=/demos/swarm-board/ scripts/freeze/build.sh dist-static
+mkdir -p /tmp/sb/demos && ln -sfn "$PWD/dist-static/site" /tmp/sb/demos/swarm-board
+python3 -m http.server 8791 -d /tmp/sb      # open http://localhost:8791/demos/swarm-board/
 ```
 
 `scripts/freeze/slice.json` picks the fleet, the turn windows, the runs and the pages. `freeze_data.py` copies only that slice; every API call the pages make is answered from pre-built JSON (`ui/src/lib/frozen-fetch.js`).
